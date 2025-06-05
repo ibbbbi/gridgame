@@ -1,4 +1,4 @@
-name: Docker
+name: Docker Publish
 
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
@@ -6,21 +6,17 @@ name: Docker
 # documentation.
 
 on:
-  schedule:
-    - cron: '23 13 * * *'
   push:
-    branches: [ "main" ]
-    # Publish semver tags as releases.
+    branches: ["main"]
     tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+  schedule:
+    - cron: '23 13 * * *'
 
 env:
-  # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
-  # github.repository as <account>/<repo>
   IMAGE_NAME: ${{ github.repository }}
-
 
 jobs:
   build:
