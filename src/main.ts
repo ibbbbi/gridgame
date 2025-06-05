@@ -27,6 +27,8 @@ const game = new PowerGridGame(
 const toolButtons = document.querySelectorAll('.tool-btn') as NodeListOf<HTMLButtonElement>
 const simulateBtn = document.querySelector('#simulate-btn') as HTMLButtonElement
 const clearBtn = document.querySelector('#clear-btn') as HTMLButtonElement
+const undoBtn = document.querySelector('#undo-btn') as HTMLButtonElement
+const redoBtn = document.querySelector('#redo-btn') as HTMLButtonElement
 
 // Tool selection handlers
 toolButtons.forEach(button => {
@@ -49,12 +51,17 @@ simulateBtn.addEventListener('click', () => {
 })
 
 clearBtn.addEventListener('click', () => {
-  if (confirm('Are you sure you want to clear the entire grid?')) {
+  if (confirm('Are you sure you want to clear the entire grid? This action cannot be undone.')) {
     game.clearGrid()
-    // Clear active tool selection
-    toolButtons.forEach(btn => btn.classList.remove('active'))
-    game.setSelectedTool(null)
   }
+})
+
+undoBtn.addEventListener('click', () => {
+  game.undo()
+})
+
+redoBtn.addEventListener('click', () => {
+  game.redo()
 })
 
 // Resize canvas to fit container
@@ -88,6 +95,10 @@ document.addEventListener('keydown', (e) => {
       game.setSelectedTool('load')
       document.querySelector('[data-tool="load"]')?.classList.add('active')
       break
+    case 'n':
+      game.setSelectedTool('node')
+      document.querySelector('[data-tool="node"]')?.classList.add('active')
+      break
     case 't':
       game.setSelectedTool('transmission-line')
       document.querySelector('[data-tool="transmission-line"]')?.classList.add('active')
@@ -115,7 +126,8 @@ document.addEventListener('keydown', (e) => {
 
 console.log('🔌 European Power Grid Builder loaded successfully!')
 console.log('⚡ Keyboard shortcuts:')
-console.log('📍 G - Generator, S - Substation, L - Load')
+console.log('📍 G - Generator, S - Substation, L - Load, N - Grid Node')
 console.log('🔗 T - AC Transmission, D - Distribution, H - HVDC Line')
-console.log('🎮 Ctrl+R - Run Simulation, Escape - Clear Selection')
-console.log('🏗️ Build realistic European power grids with AC load-flow analysis!')
+console.log('🎮 Ctrl+R - Run Simulation, Ctrl+Z - Undo, Ctrl+Y - Redo')
+console.log('🖱️ Right-click components/nodes to delete, Escape - Clear Selection')
+console.log('🏗️ Build realistic European power grids with multi-connection nodes!')

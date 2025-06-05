@@ -31,9 +31,9 @@ export class PowerGridGame {
     private loadServedElement: HTMLElement,
     private efficiencyElement: HTMLElement,
     private infoElement: HTMLElement,
-    private frequencyElement?: HTMLElement,
+    private _frequencyElement?: HTMLElement,
     private reliabilityElement?: HTMLElement,
-    private renewablesElement?: HTMLElement
+    private _renewablesElement?: HTMLElement
   ) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
