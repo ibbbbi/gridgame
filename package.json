@@ -34,8 +34,5 @@
   "devDependencies": {
     "typescript": "^5.2.2",
     "vite": "^5.0.0"
-  },
-  "dependencies": {
-    "canvas": "^2.11.2"
   }
 }
