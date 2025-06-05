@@ -1,4 +1,4 @@
-import { GridComponent, PowerLine, Point, ComponentType, LineType, NetworkType, GridStats, VoltageLevel, SimulationResult } from '../types/GridTypes';
+import { GridComponent, PowerLine, Point, ComponentType, LineType, NetworkType, GridStats, VoltageLevel, GridNode, Command } from '../types/GridTypes';
 import { EuropeanACPowerFlowSimulator } from '../simulation/EuropeanPowerFlowSimulator';
 
 export class PowerGridGame {
@@ -6,9 +6,15 @@ export class PowerGridGame {
   private ctx: CanvasRenderingContext2D;
   private components: Map<string, GridComponent> = new Map();
   private lines: Map<string, PowerLine> = new Map();
+  private gridNodes: Map<string, GridNode> = new Map(); // New: Grid nodes for multiple connections
   private simulator: EuropeanACPowerFlowSimulator = new EuropeanACPowerFlowSimulator();
   
-  private selectedTool: ComponentType | LineType | 'radial' | 'meshed' | null = null;
+  // Undo/Redo system
+  private commandHistory: Command[] = [];
+  private currentCommandIndex = -1;
+  private maxHistorySize = 50;
+  
+  private selectedTool: ComponentType | LineType | 'radial' | 'meshed' | 'node' | null = null;
   private networkType: NetworkType = 'radial';
   private isPlacingLine = false;
   private lineStart: string | null = null;
@@ -24,6 +30,7 @@ export class PowerGridGame {
 
   private componentCounter = 0;
   private lineCounter = 0;
+  private nodeCounter = 0; // New: Node counter
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -31,9 +38,9 @@ export class PowerGridGame {
     private loadServedElement: HTMLElement,
     private efficiencyElement: HTMLElement,
     private infoElement: HTMLElement,
-    private frequencyElement?: HTMLElement,
+    _frequencyElement?: HTMLElement,
     private reliabilityElement?: HTMLElement,
-    private renewablesElement?: HTMLElement
+    _renewablesElement?: HTMLElement
   ) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d')!;
@@ -41,304 +48,565 @@ export class PowerGridGame {
     this.updateStats();
   }
 
-  public init(): void {
-    this.resizeCanvas();
-    this.draw();
-  }
-
-  public setSelectedTool(tool: ComponentType | LineType | 'radial' | 'meshed' | null): void {
-    this.selectedTool = tool;
-    this.isPlacingLine = false;
-    this.lineStart = null;
-    
-    // Update network type if applicable
-    if (tool === 'radial' || tool === 'meshed') {
-      this.networkType = tool as NetworkType;
-    }
-  }
-  public simulate(): void {
-    // Set components and lines in simulator
-    const componentsArray = Array.from(this.components.values());
-    const linesArray = Array.from(this.lines.values());
-    
-    this.simulator.setComponents(componentsArray);
-    this.simulator.setLines(linesArray);
-    this.simulator.setNetworkType(this.networkType);
-    
-    // Run simulation
-    const result = this.simulator.simulate();
-    
-    // Update stats based on simulation result
-    this.updateStatsFromSimulation(result);
-    this.updateDisplay();
-    
-    // Show detailed results
-    this.showSimulationResults(result);
-  }
-
-  public clearGrid(): void {
-    this.components.clear();
-    this.lines.clear();
-    this.selectedTool = null;
-    this.isPlacingLine = false;
-    this.lineStart = null;
-    this.componentCounter = 0;
-    this.lineCounter = 0;
-    
-    // Reset stats
-    this.stats = {
-      budget: 100000,
-      totalGeneration: 0,
-      totalLoad: 0,
-      loadServed: 0,
-      efficiency: 0,
-      reliability: 0
-    };
-    
-    this.updateStats();
-    this.draw();
-  }
-
-  private resizeCanvas(): void {
-    const rect = this.canvas.getBoundingClientRect();
-    this.canvas.width = rect.width;
-    this.canvas.height = rect.height;
-  }
-
   private setupEventListeners(): void {
     this.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
     this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-    window.addEventListener('resize', () => this.resizeCanvas());
+    
+    // Add right-click context menu for deletion
+    this.canvas.addEventListener('contextmenu', (e) => this.handleRightClick(e));
+    
+    // Add keyboard listeners for undo/redo
+    document.addEventListener('keydown', (e) => this.handleKeyDown(e));
   }
 
-  private handleCanvasClick(e: MouseEvent): void {
+  private handleKeyDown(e: KeyboardEvent): void {
+    // Undo: Ctrl+Z (or Cmd+Z on Mac)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      this.undo();
+    }
+    // Redo: Ctrl+Y or Ctrl+Shift+Z (or Cmd+Y/Cmd+Shift+Z on Mac)
+    else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      e.preventDefault();
+      this.redo();
+    }
+  }
+
+  private getMousePosition(e: MouseEvent): Point {
     const rect = this.canvas.getBoundingClientRect();
-    const point: Point = {
+    return {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top
     };
+  }
 
-    if (!this.selectedTool) return;
-
-    // Handle component placement
-    if (this.selectedTool === 'generator' || this.selectedTool === 'substation' || this.selectedTool === 'load') {
-      this.placeComponent(this.selectedTool, point);
-    }
+  private handleCanvasClick(e: MouseEvent): void {
+    const pos = this.getMousePosition(e);
     
-    // Handle line placement
-    if (this.selectedTool === 'transmission-line' || this.selectedTool === 'distribution-line' || this.selectedTool === 'hvdc-line') {
-      this.handleLineClick(point);
+    if (this.selectedTool === 'radial' || this.selectedTool === 'meshed') {
+      this.networkType = this.selectedTool;
+      this.selectedTool = null;
+      this.render();
+      return;
+    }
+
+    // Place grid node
+    if (this.selectedTool === 'node') {
+      this.placeGridNode(pos);
+      return;
+    }
+
+    // Check if clicking on existing component or grid node
+    const clickedComponent = this.getComponentAt(pos);
+    const clickedNode = this.getNodeAt(pos);
+    
+    if (this.isPlacingLine && (clickedComponent || clickedNode)) {
+      const targetId = clickedComponent ? clickedComponent.id : clickedNode!.id;
+      this.completeLine(targetId);
+      return;
+    }
+
+    if (clickedComponent) {
+      if (this.selectedTool === 'transmission-line' || 
+          this.selectedTool === 'distribution-line' || 
+          this.selectedTool === 'hvdc-line') {
+        this.startLine(clickedComponent.id);
+      } else {
+        this.selectComponent(clickedComponent);
+      }
+      return;
+    }
+
+    if (clickedNode) {
+      if (this.selectedTool === 'transmission-line' || 
+          this.selectedTool === 'distribution-line' || 
+          this.selectedTool === 'hvdc-line') {
+        this.startLine(clickedNode.id);
+      } else {
+        this.selectNode(clickedNode);
+      }
+      return;
+    }
+
+    // Place new component
+    if (this.selectedTool && this.isComponentTool(this.selectedTool)) {
+      this.placeComponent(this.selectedTool, pos);
     }
   }
 
   private handleMouseMove(e: MouseEvent): void {
-    if (!this.isPlacingLine || !this.lineStart) return;
+    const pos = this.getMousePosition(e);
     
-    const rect = this.canvas.getBoundingClientRect();
-    const currentPoint: Point = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    };
-    
-    // Redraw with preview line
-    this.draw();
-    this.drawPreviewLine(this.getComponentPosition(this.lineStart), currentPoint);
+    if (this.isPlacingLine && this.lineStart) {
+      this.render();
+      this.drawTemporaryLine(this.lineStart, pos);
+    }
+  }
+
+  private isComponentTool(tool: string): tool is ComponentType {
+    return ['generator', 'substation', 'load'].includes(tool);
   }
 
   private placeComponent(type: ComponentType, position: Point): void {
-    const id = `${type}_${this.componentCounter++}`;
+    const cost = this.getComponentCost(type);
     
-    // Get default parameters based on component type and European standards
+    if (this.stats.budget < cost) {
+      this.showMessage('Insufficient budget!');
+      return;
+    }
+
     const component: GridComponent = {
-      id,
+      id: `${type}_${++this.componentCounter}`,
       type,
       position,
-      capacity: this.getDefaultCapacity(type),
-      cost: this.getComponentCost(type),
+      capacity: this.getComponentCapacity(type),
+      cost,
       connections: [],
-      voltage: this.getDefaultVoltage(type),
+      voltage: this.getComponentVoltage(type),
       isActive: true,
-      activePower: type === 'load' ? this.getDefaultCapacity(type) : 0,
-      reactivePower: 0,
-      voltageMagnitude: 1.0, // per unit
-      voltageAngle: 0,
-      frequency: 50 // European standard
+      // AC power flow parameters
+      activePower: this.getComponentActivePower(type),
+      reactivePower: this.getComponentReactivePower(type),
+      voltageMagnitude: 1.0, // per unit (nominal voltage)
+      voltageAngle: 0.0, // degrees
+      frequency: 50.0 // Hz (European standard)
     };
-    
-    this.components.set(id, component);
-    this.updateStats();
-    this.draw();
-  }
 
-  private getDefaultCapacity(type: ComponentType): number {
-    switch (type) {
-      case 'generator': return 500; // MW
-      case 'substation': return 1000; // MVA
-      case 'load': return 200; // MW
-      default: return 100;
+    // Check if there's a nearby grid node to connect to
+    const nearestNode = this.findNearestNode(position);
+    if (nearestNode) {
+      this.connectComponentToNode(component.id, nearestNode.id);
     }
+
+    // Create command for undo/redo
+    const command: Command = {
+      id: `cmd_${Date.now()}`,
+      type: 'place-component',
+      timestamp: Date.now(),
+      execute: () => {
+        this.components.set(component.id, component);
+        this.stats.budget -= cost;
+        if (nearestNode) {
+          this.connectComponentToNode(component.id, nearestNode.id);
+        }
+      },
+      undo: () => {
+        this.components.delete(component.id);
+        this.stats.budget += cost;
+        if (nearestNode) {
+          // Remove component from node's connected list
+          const nodeIndex = nearestNode.connectedComponents.indexOf(component.id);
+          if (nodeIndex > -1) {
+            nearestNode.connectedComponents.splice(nodeIndex, 1);
+          }
+        }
+      },
+      data: { component, cost, nearestNode }
+    };
+
+    command.execute();
+    this.addCommand(command);
+    this.updateStats();
+    this.render();
   }
 
   private getComponentCost(type: ComponentType): number {
-    switch (type) {
-      case 'generator': return 50000; // EUR per MW
-      case 'substation': return 25000; // EUR per MVA
-      case 'load': return 5000; // EUR per MW
-      default: return 10000;
-    }
-  }
-
-  private getDefaultVoltage(type: ComponentType): VoltageLevel {
-    switch (type) {
-      case 'generator': return 220; // kV
-      case 'substation': return 400; // kV
-      case 'load': return 110; // kV
-      default: return 50;
-    }
-  }
-
-  private handleLineClick(point: Point): void {
-    const clickedComponent = this.getComponentAtPoint(point);
-    
-    if (!clickedComponent) return;
-    
-    if (!this.isPlacingLine) {
-      // Start placing line
-      this.isPlacingLine = true;
-      this.lineStart = clickedComponent.id;
-    } else {
-      // Complete line placement
-      if (this.lineStart && clickedComponent.id !== this.lineStart) {
-        this.createLine(this.lineStart, clickedComponent.id);
-      }
-      this.isPlacingLine = false;
-      this.lineStart = null;
-    }
-  }
-
-  private createLine(fromId: string, toId: string): void {
-    const lineId = `line_${this.lineCounter++}`;
-    const fromComponent = this.components.get(fromId);
-    const toComponent = this.components.get(toId);
-    
-    if (!fromComponent || !toComponent) return;
-    
-    // Calculate distance
-    const dx = toComponent.position.x - fromComponent.position.x;
-    const dy = toComponent.position.y - fromComponent.position.y;
-    const length = Math.sqrt(dx * dx + dy * dy) / 10; // Convert pixels to km approximation
-    
-    const line: PowerLine = {
-      id: lineId,
-      type: this.selectedTool as LineType,
-      from: fromId,
-      to: toId,
-      length,
-      cost: this.getLineCost(this.selectedTool as LineType, length),
-      capacity: this.getLineCapacity(this.selectedTool as LineType),
-      resistance: this.getLineResistance(this.selectedTool as LineType),
-      reactance: this.getLineReactance(this.selectedTool as LineType),
-      susceptance: this.getLineSusceptance(this.selectedTool as LineType),
-      thermalLimit: this.getLineCapacity(this.selectedTool as LineType),
-      isActive: true,
-      isContingency: false
+    const costs = {
+      generator: 10000,
+      substation: 5000,
+      load: 0
     };
-    
-    this.lines.set(lineId, line);
-    
-    // Update component connections
-    fromComponent.connections.push(toId);
-    toComponent.connections.push(fromId);
-    
-    this.updateStats();
-    this.draw();
+    return costs[type];
   }
 
-  private getLineCost(type: LineType, length: number): number {
+  private getComponentCapacity(type: ComponentType): number {
+    const capacities = {
+      generator: 50 + Math.random() * 100, // 50-150 MW
+      substation: 200, // 200 MW transfer capacity
+      load: 20 + Math.random() * 80 // 20-100 MW demand
+    };
+    return Math.round(capacities[type]);
+  }
+
+  private getComponentVoltage(type: ComponentType): VoltageLevel {
+    const voltages: Record<ComponentType, VoltageLevel> = {
+      generator: 220, // 220 kV European transmission
+      substation: 110, // 110 kV European sub-transmission
+      load: 20 // 20 kV European distribution
+    };
+    return voltages[type];
+  }
+
+  private getComponentActivePower(type: ComponentType): number {
+    switch (type) {
+      case 'generator':
+        return this.getComponentCapacity(type); // Full capacity for generators
+      case 'load':
+        return -this.getComponentCapacity(type); // Negative for loads (consuming power)
+      case 'substation':
+        return 0; // Substations don't generate or consume active power
+      default:
+        return 0;
+    }
+  }
+
+  private getComponentReactivePower(type: ComponentType): number {
+    switch (type) {
+      case 'generator':
+        // Generators can provide reactive power (power factor ~0.9)
+        return this.getComponentCapacity(type) * 0.45; // tan(acos(0.9))
+      case 'load':
+        // Loads typically consume reactive power
+        return -this.getComponentCapacity(type) * 0.3;
+      case 'substation':
+        return 0; // Substations don't generate or consume reactive power
+      default:
+        return 0;
+    }
+  }
+
+  private startLine(componentId: string): void {
+    this.isPlacingLine = true;
+    this.lineStart = componentId;
+    this.canvas.style.cursor = 'crosshair';
+  }
+
+  private completeLine(endTargetId: string): void {
+    if (!this.lineStart || this.lineStart === endTargetId) {
+      this.cancelLine();
+      return;
+    }
+
+    const lineType = this.selectedTool as LineType;
+    
+    // Get start and end positions (could be components or nodes)
+    const startTarget = this.components.get(this.lineStart) || this.gridNodes.get(this.lineStart);
+    const endTarget = this.components.get(endTargetId) || this.gridNodes.get(endTargetId);
+    
+    if (!startTarget || !endTarget) {
+      this.cancelLine();
+      return;
+    }
+    
+    const length = this.calculateDistance(startTarget.position, endTarget.position) / 10; // Convert pixels to km
     const costPerKm = {
-      'transmission-line': 1000000, // 1M EUR per km
-      'distribution-line': 100000,  // 100k EUR per km
-      'hvdc-line': 2000000         // 2M EUR per km
+      'transmission-line': 2000,
+      'distribution-line': 1000,
+      'hvdc-line': 3000
     };
-    return costPerKm[type] * length;
-  }
+    const cost = Math.round(length * (costPerKm[lineType] || 2000));
 
-  private getLineCapacity(type: LineType): number {
-    switch (type) {
-      case 'transmission-line': return 1000; // MVA
-      case 'distribution-line': return 100;  // MVA
-      case 'hvdc-line': return 2000;        // MW (DC)
-      default: return 100;
+    if (this.stats.budget < cost) {
+      this.showMessage('Insufficient budget for line!');
+      this.cancelLine();
+      return;
     }
+
+    const lineCapacity = {
+      'transmission-line': 300,
+      'distribution-line': 100,
+      'hvdc-line': 500
+    };
+
+    const line: PowerLine = {
+      id: `line_${++this.lineCounter}`,
+      type: lineType,
+      from: this.lineStart,
+      to: endTargetId,
+      length,
+      cost,
+      capacity: lineCapacity[lineType] || 300,
+      resistance: this.getLineResistance(lineType, length),
+      reactance: this.getLineReactance(lineType, length),
+      susceptance: this.getLineSusceptance(lineType, length),
+      thermalLimit: lineCapacity[lineType] || 300, // MVA
+      isActive: true,
+      isContingency: false // Initially not out for N-1 analysis
+    };
+
+    // Create command for undo/redo
+    const command: Command = {
+      id: `cmd_${Date.now()}`,
+      type: 'place-line',
+      timestamp: Date.now(),
+      execute: () => {
+        this.lines.set(line.id, line);
+        
+        // Update connections for components
+        const startComp = this.components.get(this.lineStart!);
+        const endComp = this.components.get(endTargetId);
+        if (startComp) startComp.connections.push(endTargetId);
+        if (endComp) endComp.connections.push(this.lineStart!);
+        
+        // Update connections for grid nodes
+        const startNode = this.gridNodes.get(this.lineStart!);
+        const endNode = this.gridNodes.get(endTargetId);
+        if (startNode) startNode.connectedLines.push(line.id);
+        if (endNode) endNode.connectedLines.push(line.id);
+        
+        this.stats.budget -= cost;
+      },
+      undo: () => {
+        this.lines.delete(line.id);
+        
+        // Remove connections for components
+        const startComp = this.components.get(this.lineStart!);
+        const endComp = this.components.get(endTargetId);
+        if (startComp) {
+          const idx = startComp.connections.indexOf(endTargetId);
+          if (idx > -1) startComp.connections.splice(idx, 1);
+        }
+        if (endComp) {
+          const idx = endComp.connections.indexOf(this.lineStart!);
+          if (idx > -1) endComp.connections.splice(idx, 1);
+        }
+        
+        // Remove connections for grid nodes
+        const startNode = this.gridNodes.get(this.lineStart!);
+        const endNode = this.gridNodes.get(endTargetId);
+        if (startNode) {
+          const idx = startNode.connectedLines.indexOf(line.id);
+          if (idx > -1) startNode.connectedLines.splice(idx, 1);
+        }
+        if (endNode) {
+          const idx = endNode.connectedLines.indexOf(line.id);
+          if (idx > -1) endNode.connectedLines.splice(idx, 1);
+        }
+        
+        this.stats.budget += cost;
+      },
+      data: { line, cost, startTargetId: this.lineStart, endTargetId }
+    };
+
+    command.execute();
+    this.addCommand(command);
+    this.updateStats();
+    this.cancelLine();
+    this.render();
   }
 
-  private getLineResistance(type: LineType): number {
-    switch (type) {
-      case 'transmission-line': return 0.05; // Ohms per km
-      case 'distribution-line': return 0.4;  // Ohms per km
-      case 'hvdc-line': return 0.02;        // Ohms per km
-      default: return 0.1;
-    }
+  private getLineResistance(lineType: LineType, length: number): number {
+    // European transmission line parameters (Ohms per km)
+    const resistancePerKm = {
+      'transmission-line': 0.03, // 400kV/220kV lines
+      'distribution-line': 0.2,  // 20kV/10kV lines
+      'hvdc-line': 0.01          // HVDC lines
+    };
+    return (resistancePerKm[lineType] || 0.1) * length;
   }
 
-  private getLineReactance(type: LineType): number {
-    switch (type) {
-      case 'transmission-line': return 0.3; // Ohms per km
-      case 'distribution-line': return 0.4; // Ohms per km
-      case 'hvdc-line': return 0;          // DC line, no reactance
-      default: return 0.2;
-    }
+  private getLineReactance(lineType: LineType, length: number): number {
+    // European transmission line parameters (Ohms per km)
+    const reactancePerKm = {
+      'transmission-line': 0.3,  // 400kV/220kV lines
+      'distribution-line': 0.4,  // 20kV/10kV lines
+      'hvdc-line': 0.0           // HVDC has no reactance
+    };
+    return (reactancePerKm[lineType] || 0.3) * length;
   }
 
-  private getLineSusceptance(type: LineType): number {
-    switch (type) {
-      case 'transmission-line': return 3e-6; // Siemens per km
-      case 'distribution-line': return 2e-6; // Siemens per km
-      case 'hvdc-line': return 0;           // DC line, no susceptance
-      default: return 1e-6;
-    }
+  private getLineSusceptance(lineType: LineType, length: number): number {
+    // European transmission line parameters (Siemens per km)
+    const susceptancePerKm = {
+      'transmission-line': 4e-6, // 400kV/220kV lines
+      'distribution-line': 2e-6, // 20kV/10kV lines
+      'hvdc-line': 0.0           // HVDC has no susceptance
+    };
+    return (susceptancePerKm[lineType] || 2e-6) * length;
   }
 
-  private getComponentAtPoint(point: Point): GridComponent | null {
+  private cancelLine(): void {
+    this.isPlacingLine = false;
+    this.lineStart = null;
+    this.canvas.style.cursor = 'default';
+  }
+
+  private calculateDistance(p1: Point, p2: Point): number {
+    return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+  }
+
+  private getComponentAt(pos: Point): GridComponent | null {
     for (const component of this.components.values()) {
-      const dx = point.x - component.position.x;
-      const dy = point.y - component.position.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      if (distance < 20) { // 20px click radius
+      const distance = this.calculateDistance(pos, component.position);
+      if (distance <= 20) { // 20px radius
         return component;
       }
     }
     return null;
   }
 
-  private getComponentPosition(componentId: string): Point {
-    const component = this.components.get(componentId);
-    return component ? component.position : { x: 0, y: 0 };
+  private getNodeAt(pos: Point): GridNode | null {
+    for (const node of this.gridNodes.values()) {
+      const distance = this.calculateDistance(pos, node.position);
+      if (distance <= 15) { // 15px radius for nodes
+        return node;
+      }
+    }
+    return null;
   }
 
-  private draw(): void {
-    // Clear canvas
+  private selectComponent(component: GridComponent): void {
+    let nodeInfo = 'Not connected to grid node';
+    if (component.connectedNode) {
+      const node = this.gridNodes.get(component.connectedNode);
+      if (node) {
+        nodeInfo = `Connected to ${node.id} (${node.voltage}kV)`;
+      }
+    }
+    
+    const info = `
+      <strong>${component.type.toUpperCase()}</strong><br>
+      ID: ${component.id}<br>
+      Capacity: ${component.capacity} MW<br>
+      Voltage: ${component.voltage} kV<br>
+      Cost: $${component.cost.toLocaleString()}<br>
+      Connections: ${component.connections.length}<br>
+      Status: ${component.isActive ? 'Active' : 'Inactive'}<br>
+      <br>
+      <strong>Grid Connection:</strong><br>
+      ${nodeInfo}<br>
+      <br>
+      <em>Right-click to delete</em>
+    `;
+    this.infoElement.innerHTML = info;
+  }
+
+  private selectNode(node: GridNode): void {
+    const totalConnections = node.connectedComponents.length + node.connectedLines.length;
+    
+    let componentsList = 'None';
+    if (node.connectedComponents.length > 0) {
+      componentsList = node.connectedComponents.map(id => {
+        const comp = this.components.get(id);
+        return comp ? `${comp.type} (${comp.id})` : id;
+      }).join(', ');
+    }
+    
+    let linesList = 'None';
+    if (node.connectedLines.length > 0) {
+      linesList = node.connectedLines.map(id => {
+        const line = this.lines.get(id);
+        return line ? `${line.type} (${line.capacity}MW)` : id;
+      }).join(', ');
+    }
+    
+    const info = `
+      <strong>GRID NODE</strong><br>
+      ID: ${node.id}<br>
+      Voltage: ${node.voltage} kV<br>
+      Total Connections: ${totalConnections}<br>
+      <br>
+      <strong>Connected Components:</strong><br>
+      ${componentsList}<br>
+      <br>
+      <strong>Connected Lines:</strong><br>
+      ${linesList}<br>
+      <br>
+      <em>Right-click to delete</em>
+    `;
+    this.infoElement.innerHTML = info;
+  }
+
+  public setSelectedTool(tool: ComponentType | LineType | 'radial' | 'meshed' | 'node' | null): void {
+    this.selectedTool = tool;
+    this.cancelLine();
+  }
+
+  public simulate(): void {
+    this.simulator.setComponents(Array.from(this.components.values()));
+    this.simulator.setLines(Array.from(this.lines.values()));
+    this.simulator.setNetworkType(this.networkType);
+    
+    const result = this.simulator.simulate();
+    
+    if (result.success) {
+      this.stats.loadServed = result.loadServed;
+      this.stats.efficiency = result.efficiency;
+      this.stats.reliability = result.reliability;
+      
+      this.updateStats();
+      
+      this.showMessage(`✅ European Power Grid Simulation Completed!
+      
+📊 Results:
+• Load Served: ${result.loadServed.toFixed(1)} MW
+• System Efficiency: ${result.efficiency.toFixed(1)}%
+• Grid Reliability: ${(result.reliability * 100).toFixed(1)}%`);
+    } else {
+      this.showMessage(`❌ Simulation Failed!
+      
+Errors:
+• ${result.errors.join('\n• ')}`);
+    }
+    
+    this.render();
+  }
+
+  public clearGrid(): void {
+    this.components.clear();
+    this.lines.clear();
+    this.gridNodes.clear();
+    this.stats.budget = 100000;
+    this.stats.loadServed = 0;
+    this.stats.efficiency = 0;
+    this.stats.reliability = 0;
+    this.componentCounter = 0;
+    this.lineCounter = 0;
+    this.nodeCounter = 0; // Reset node counter
+    
+    // Clear command history
+    this.commandHistory = [];
+    this.currentCommandIndex = -1;
+    
+    this.updateStats();
+    this.updateButtonStates();
+    this.render();
+  }
+
+  private updateStats(): void {
+    this.budgetElement.textContent = `$${this.stats.budget.toLocaleString()}`;
+    this.loadServedElement.textContent = `${this.stats.loadServed.toFixed(1)} MW`;
+    this.efficiencyElement.textContent = `${this.stats.efficiency.toFixed(1)}%`;
+    
+    // Optional elements for European grid metrics
+    if (this.reliabilityElement) {
+      this.reliabilityElement.textContent = `${(this.stats.reliability * 100).toFixed(1)}%`;
+    }
+  }
+
+  private showMessage(message: string): void {
+    // Simple alert for now - could be replaced with a proper toast system
+    alert(message);
+  }
+
+  private render(): void {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     
     // Draw grid background
     this.drawGrid();
     
-    // Draw lines first (behind components)
+    // Draw lines first (so they appear under components)
     this.drawLines();
+    
+    // Draw component-to-node connections
+    this.drawComponentNodeConnections();
+    
+    // Draw grid nodes
+    this.drawGridNodes();
     
     // Draw components
     this.drawComponents();
+    
+    // Draw network type indicator
+    this.drawNetworkTypeIndicator();
   }
 
   private drawGrid(): void {
-    this.ctx.strokeStyle = '#e0e0e0';
+    this.ctx.strokeStyle = '#f0f0f0';
     this.ctx.lineWidth = 1;
     
-    const gridSize = 50;
-    
     // Vertical lines
-    for (let x = 0; x < this.canvas.width; x += gridSize) {
+    for (let x = 0; x <= this.canvas.width; x += 50) {
       this.ctx.beginPath();
       this.ctx.moveTo(x, 0);
       this.ctx.lineTo(x, this.canvas.height);
@@ -346,7 +614,7 @@ export class PowerGridGame {
     }
     
     // Horizontal lines
-    for (let y = 0; y < this.canvas.height; y += gridSize) {
+    for (let y = 0; y <= this.canvas.height; y += 50) {
       this.ctx.beginPath();
       this.ctx.moveTo(0, y);
       this.ctx.lineTo(this.canvas.width, y);
@@ -356,152 +624,459 @@ export class PowerGridGame {
 
   private drawLines(): void {
     for (const line of this.lines.values()) {
-      const fromComponent = this.components.get(line.from);
-      const toComponent = this.components.get(line.to);
+      const fromTarget = this.components.get(line.from) || this.gridNodes.get(line.from);
+      const toTarget = this.components.get(line.to) || this.gridNodes.get(line.to);
       
-      if (!fromComponent || !toComponent) continue;
+      if (!fromTarget || !toTarget) continue;
+      
+      // Calculate line path
+      const fromPos = fromTarget.position;
+      const toPos = toTarget.position;
       
       this.ctx.beginPath();
-      this.ctx.moveTo(fromComponent.position.x, fromComponent.position.y);
-      this.ctx.lineTo(toComponent.position.x, toComponent.position.y);
+      this.ctx.moveTo(fromPos.x, fromPos.y);
+      this.ctx.lineTo(toPos.x, toPos.y);
       
-      // Set line style based on type
+      // Set line style based on type with electrical standards
       switch (line.type) {
         case 'transmission-line':
-          this.ctx.strokeStyle = '#ff6b35';
+          this.ctx.strokeStyle = '#e67e22';
           this.ctx.lineWidth = 4;
+          this.ctx.setLineDash([]);
           break;
         case 'distribution-line':
-          this.ctx.strokeStyle = '#4ecdc4';
-          this.ctx.lineWidth = 2;
+          this.ctx.strokeStyle = '#16a085';
+          this.ctx.lineWidth = 3;
+          this.ctx.setLineDash([]);
           break;
         case 'hvdc-line':
-          this.ctx.strokeStyle = '#9b59b6';
-          this.ctx.lineWidth = 6;
-          this.ctx.setLineDash([10, 5]); // Dashed line for HVDC
+          this.ctx.strokeStyle = '#8e44ad';
+          this.ctx.lineWidth = 5;
+          this.ctx.setLineDash([15, 8]); // Dashed line for DC
           break;
       }
       
       this.ctx.stroke();
       this.ctx.setLineDash([]); // Reset line dash
+      
+      // Draw line capacity label at midpoint
+      const midX = (fromPos.x + toPos.x) / 2;
+      const midY = (fromPos.y + toPos.y) / 2;
+      
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      this.ctx.strokeStyle = '#34495e';
+      this.ctx.lineWidth = 1;
+      this.ctx.beginPath();
+      this.ctx.roundRect(midX - 20, midY - 8, 40, 16, 4);
+      this.ctx.fill();
+      this.ctx.stroke();
+      
+      this.ctx.fillStyle = '#2c3e50';
+      this.ctx.font = 'bold 10px Arial';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(`${line.capacity}MW`, midX, midY + 3);
     }
   }
 
   private drawComponents(): void {
     for (const component of this.components.values()) {
-      this.ctx.save();
-      this.ctx.translate(component.position.x, component.position.y);
+      const { x, y } = component.position;
       
-      // Set component color and size
-      let color: string;
-      let size: number;
+      // Draw component shape
+      this.ctx.beginPath();
       
       switch (component.type) {
         case 'generator':
-          color = '#2ecc71';
-          size = 25;
+          this.ctx.fillStyle = '#f39c12';
+          this.ctx.strokeStyle = '#e67e22';
+          this.ctx.arc(x, y, 15, 0, 2 * Math.PI);
           break;
+          
         case 'substation':
-          color = '#3498db';
-          size = 20;
+          this.ctx.fillStyle = '#9b59b6';
+          this.ctx.strokeStyle = '#8e44ad';
+          this.ctx.rect(x - 12, y - 12, 24, 24);
           break;
+          
         case 'load':
-          color = '#e74c3c';
-          size = 15;
+          this.ctx.fillStyle = '#e74c3c';
+          this.ctx.strokeStyle = '#c0392b';
+          // Draw triangle
+          this.ctx.moveTo(x, y - 15);
+          this.ctx.lineTo(x - 13, y + 10);
+          this.ctx.lineTo(x + 13, y + 10);
+          this.ctx.closePath();
           break;
       }
       
-      // Draw component circle
-      this.ctx.beginPath();
-      this.ctx.arc(0, 0, size, 0, 2 * Math.PI);
-      this.ctx.fillStyle = color;
-      this.ctx.fill();
-      this.ctx.strokeStyle = '#2c3e50';
       this.ctx.lineWidth = 2;
+      this.ctx.fill();
       this.ctx.stroke();
       
       // Draw component label
       this.ctx.fillStyle = '#2c3e50';
-      this.ctx.font = '10px Arial';
+      this.ctx.font = '12px Arial';
       this.ctx.textAlign = 'center';
-      this.ctx.fillText(component.id, 0, size + 15);
-      
-      this.ctx.restore();
+      this.ctx.fillText(`${component.capacity}MW`, x, y + 35);
     }
   }
 
-  private drawPreviewLine(from: Point, to: Point): void {
+  private drawTemporaryLine(startComponentId: string, endPos: Point): void {
+    const startComp = this.components.get(startComponentId);
+    if (!startComp) return;
+    
     this.ctx.beginPath();
-    this.ctx.moveTo(from.x, from.y);
-    this.ctx.lineTo(to.x, to.y);
-    this.ctx.strokeStyle = '#95a5a6';
+    this.ctx.moveTo(startComp.position.x, startComp.position.y);
+    this.ctx.lineTo(endPos.x, endPos.y);
+    this.ctx.strokeStyle = '#3498db';
     this.ctx.lineWidth = 2;
     this.ctx.setLineDash([5, 5]);
     this.ctx.stroke();
     this.ctx.setLineDash([]);
   }
 
-  private updateStats(): void {
-    // Calculate totals
-    this.stats.totalGeneration = 0;
-    this.stats.totalLoad = 0;
+  private drawNetworkTypeIndicator(): void {
+    this.ctx.fillStyle = '#2c3e50';
+    this.ctx.font = '16px Arial';
+    this.ctx.textAlign = 'left';
+    this.ctx.fillText(`Network: ${this.networkType.toUpperCase()}`, 10, 25);
+  }
+
+  public init(): void {
+    this.updateButtonStates();
+    this.render();
+  }
+
+  // Undo/Redo Methods
+  public undo(): void {
+    if (this.currentCommandIndex >= 0) {
+      const command = this.commandHistory[this.currentCommandIndex];
+      command.undo();
+      this.currentCommandIndex--;
+      this.updateStats();
+      this.updateButtonStates();
+      this.render();
+    }
+  }
+
+  public redo(): void {
+    if (this.currentCommandIndex < this.commandHistory.length - 1) {
+      this.currentCommandIndex++;
+      const command = this.commandHistory[this.currentCommandIndex];
+      command.execute();
+      this.updateStats();
+      this.updateButtonStates();
+      this.render();
+    }
+  }
+
+  private addCommand(command: Command): void {
+    // Remove any commands after current index (when adding new command after undo)
+    this.commandHistory = this.commandHistory.slice(0, this.currentCommandIndex + 1);
     
-    for (const component of this.components.values()) {
-      if (component.type === 'generator') {
-        this.stats.totalGeneration += component.capacity;
-      } else if (component.type === 'load') {
-        this.stats.totalLoad += component.capacity;
+    // Add new command
+    this.commandHistory.push(command);
+    this.currentCommandIndex++;
+    
+    // Limit history size
+    if (this.commandHistory.length > this.maxHistorySize) {
+      this.commandHistory.shift();
+      this.currentCommandIndex--;
+    }
+    
+    // Update button states after adding command
+    this.updateButtonStates();
+  }
+
+  // Grid Node Methods
+  private createGridNode(position: Point, voltage: VoltageLevel): GridNode {
+    return {
+      id: `node_${++this.nodeCounter}`,
+      position,
+      voltage,
+      connectedComponents: [],
+      connectedLines: [],
+      isVisible: true
+    };
+  }
+
+  private placeGridNode(position: Point): void {
+    const node = this.createGridNode(position, 110); // Default 110kV
+    
+    const command: Command = {
+      id: `cmd_${Date.now()}`,
+      type: 'place-node',
+      timestamp: Date.now(),
+      execute: () => {
+        this.gridNodes.set(node.id, node);
+      },
+      undo: () => {
+        this.gridNodes.delete(node.id);
+      },
+      data: { node }
+    };
+
+    command.execute();
+    this.addCommand(command);
+    this.render();
+  }
+
+  private connectComponentToNode(componentId: string, nodeId: string): void {
+    const component = this.components.get(componentId);
+    const node = this.gridNodes.get(nodeId);
+    
+    if (component && node) {
+      component.connectedNode = nodeId;
+      node.connectedComponents.push(componentId);
+    }
+  }
+
+  private findNearestNode(position: Point, maxDistance = 30): GridNode | null {
+    let nearestNode: GridNode | null = null;
+    let minDistance = maxDistance;
+
+    for (const node of this.gridNodes.values()) {
+      const distance = Math.sqrt(
+        Math.pow(position.x - node.position.x, 2) + 
+        Math.pow(position.y - node.position.y, 2)
+      );
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestNode = node;
       }
     }
-    
-    // Calculate total cost
-    let totalCost = 0;
+
+    return nearestNode;
+  }
+
+  private drawGridNodes(): void {
+    for (const node of this.gridNodes.values()) {
+      if (!node.isVisible) continue;
+      
+      const { x, y } = node.position;
+      const totalConnections = node.connectedComponents.length + node.connectedLines.length;
+      
+      // Draw connection point (small circle)
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, 8, 0, 2 * Math.PI);
+      this.ctx.fillStyle = '#34495e';
+      this.ctx.fill();
+      
+      // Draw border
+      this.ctx.beginPath();
+      this.ctx.arc(x, y, 8, 0, 2 * Math.PI);
+      this.ctx.strokeStyle = '#2c3e50';
+      this.ctx.lineWidth = 2;
+      this.ctx.stroke();
+      
+      // Draw inner circle for connection indication
+      if (totalConnections > 0) {
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, 4, 0, 2 * Math.PI);
+        this.ctx.fillStyle = '#e74c3c';
+        this.ctx.fill();
+      }
+      
+      // Draw connection count badge if there are multiple connections
+      if (totalConnections > 1) {
+        this.ctx.beginPath();
+        this.ctx.arc(x + 10, y - 10, 8, 0, 2 * Math.PI);
+        this.ctx.fillStyle = '#3498db';
+        this.ctx.fill();
+        
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = 'bold 10px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText(totalConnections.toString(), x + 10, y - 6);
+      }
+      
+      // Draw voltage level label
+      this.ctx.fillStyle = '#2c3e50';
+      this.ctx.font = '10px Arial';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(`${node.voltage}kV`, x, y + 20);
+    }
+  }
+
+  private drawComponentNodeConnections(): void {
     for (const component of this.components.values()) {
-      totalCost += component.cost;
+      if (component.connectedNode) {
+        const node = this.gridNodes.get(component.connectedNode);
+        if (node) {
+          // Draw dotted line from component to node
+          this.ctx.beginPath();
+          this.ctx.moveTo(component.position.x, component.position.y);
+          this.ctx.lineTo(node.position.x, node.position.y);
+          this.ctx.strokeStyle = '#95a5a6';
+          this.ctx.lineWidth = 1;
+          this.ctx.setLineDash([3, 3]); // Dotted line
+          this.ctx.stroke();
+          this.ctx.setLineDash([]); // Reset dash pattern
+        }
+      }
     }
+  }
+
+  // Add methods to check if undo/redo are available
+  public canUndo(): boolean {
+    return this.currentCommandIndex >= 0;
+  }
+
+  public canRedo(): boolean {
+    return this.currentCommandIndex < this.commandHistory.length - 1;
+  }
+
+  // Add method to update button states
+  public updateButtonStates(): void {
+    const undoBtn = document.querySelector('#undo-btn') as HTMLButtonElement;
+    const redoBtn = document.querySelector('#redo-btn') as HTMLButtonElement;
+
+    if (undoBtn) {
+      undoBtn.disabled = !this.canUndo();
+    }
+    if (redoBtn) {
+      redoBtn.disabled = !this.canRedo();
+    }
+  }
+
+  private handleRightClick(e: MouseEvent): void {
+    e.preventDefault(); // Prevent browser context menu
+    
+    const pos = this.getMousePosition(e);
+    const clickedComponent = this.getComponentAt(pos);
+    const clickedNode = this.getNodeAt(pos);
+    
+    if (clickedComponent) {
+      if (confirm(`Delete ${clickedComponent.type} "${clickedComponent.id}"?`)) {
+        this.deleteComponent(clickedComponent.id);
+      }
+    } else if (clickedNode) {
+      if (confirm(`Delete grid node "${clickedNode.id}"?`)) {
+        this.deleteGridNode(clickedNode.id);
+      }
+    }
+  }
+
+  private deleteComponent(componentId: string): void {
+    const component = this.components.get(componentId);
+    if (!component) return;
+
+    // Store connected lines for undo
+    const connectedLines: PowerLine[] = [];
     for (const line of this.lines.values()) {
-      totalCost += line.cost;
+      if (line.from === componentId || line.to === componentId) {
+        connectedLines.push(line);
+      }
     }
-    
-    this.stats.budget = Math.max(0, 100000 - totalCost);
-    
-    this.updateDisplay();
+
+    const command: Command = {
+      id: `cmd_${Date.now()}`,
+      type: 'delete-component',
+      timestamp: Date.now(),
+      execute: () => {
+        // Remove the component
+        this.components.delete(componentId);
+        
+        // Remove connected lines
+        connectedLines.forEach(line => {
+          this.lines.delete(line.id);
+          
+          // Remove line connections from other components/nodes
+          const otherTargetId = line.from === componentId ? line.to : line.from;
+          const otherComponent = this.components.get(otherTargetId);
+          const otherNode = this.gridNodes.get(otherTargetId);
+          
+          if (otherComponent) {
+            const idx = otherComponent.connections.indexOf(componentId);
+            if (idx > -1) otherComponent.connections.splice(idx, 1);
+          }
+          
+          if (otherNode) {
+            const idx = otherNode.connectedLines.indexOf(line.id);
+            if (idx > -1) otherNode.connectedLines.splice(idx, 1);
+          }
+        });
+        
+        // Remove from connected node
+        if (component.connectedNode) {
+          const node = this.gridNodes.get(component.connectedNode);
+          if (node) {
+            const idx = node.connectedComponents.indexOf(componentId);
+            if (idx > -1) node.connectedComponents.splice(idx, 1);
+          }
+        }
+        
+        // Refund component cost
+        this.stats.budget += component.cost;
+      },
+      undo: () => {
+        // Restore the component
+        this.components.set(componentId, component);
+        
+        // Restore connected lines
+        connectedLines.forEach(line => {
+          this.lines.set(line.id, line);
+          
+          // Restore line connections to other components/nodes
+          const otherTargetId = line.from === componentId ? line.to : line.from;
+          const otherComponent = this.components.get(otherTargetId);
+          const otherNode = this.gridNodes.get(otherTargetId);
+          
+          if (otherComponent && !otherComponent.connections.includes(componentId)) {
+            otherComponent.connections.push(componentId);
+          }
+          
+          if (otherNode && !otherNode.connectedLines.includes(line.id)) {
+            otherNode.connectedLines.push(line.id);
+          }
+        });
+        
+        // Restore connection to node
+        if (component.connectedNode) {
+          const node = this.gridNodes.get(component.connectedNode);
+          if (node && !node.connectedComponents.includes(componentId)) {
+            node.connectedComponents.push(componentId);
+          }
+        }
+        
+        // Subtract component cost
+        this.stats.budget -= component.cost;
+      },
+      data: { component, connectedLines }
+    };
+
+    command.execute();
+    this.addCommand(command);
+    this.updateStats();
+    this.render();
   }
 
-  private updateDisplay(): void {
-    this.budgetElement.textContent = `€${this.stats.budget.toLocaleString()}`;
-    this.loadServedElement.textContent = `${this.stats.loadServed.toFixed(1)}%`;
-    this.efficiencyElement.textContent = `${this.stats.efficiency.toFixed(1)}%`;
-    
-    if (this.frequencyElement) {
-      this.frequencyElement.textContent = '50.0 Hz';
-    }
-    if (this.reliabilityElement) {
-      this.reliabilityElement.textContent = `${this.stats.reliability.toFixed(1)}%`;
-    }
-    if (this.renewablesElement) {
-      this.renewablesElement.textContent = '0.0%'; // Placeholder
-    }
-  }
+  private deleteGridNode(nodeId: string): void {
+    const node = this.gridNodes.get(nodeId);
+    if (!node) return;
 
-  private updateStatsFromSimulation(result: SimulationResult): void {
-    this.stats.loadServed = result.loadServed;
-    this.stats.efficiency = result.efficiency;
-    this.stats.reliability = result.reliability;
-  }
-
-  private showSimulationResults(result: SimulationResult): void {
-    let message = `Simulation Results:\n\n`;
-    message += `Load Served: ${result.loadServed.toFixed(1)}%\n`;
-    message += `System Efficiency: ${result.efficiency.toFixed(1)}%\n`;
-    message += `Grid Reliability: ${result.reliability.toFixed(1)}%\n\n`;
-    
-    if (result.errors.length > 0) {
-      message += `Errors:\n${result.errors.join('\n')}`;
-    } else {
-      message += `✅ All European grid standards met!`;
+    // Check if node has connections
+    if (node.connectedComponents.length > 0 || node.connectedLines.length > 0) {
+      this.showMessage('Cannot delete grid node with active connections. Remove connected components and lines first.');
+      return;
     }
-    
-    this.infoElement.innerHTML = `<pre>${message}</pre>`;
+
+    const command: Command = {
+      id: `cmd_${Date.now()}`,
+      type: 'delete-node',
+      timestamp: Date.now(),
+      execute: () => {
+        this.gridNodes.delete(nodeId);
+      },
+      undo: () => {
+        this.gridNodes.set(nodeId, node);
+      },
+      data: { node }
+    };
+
+    command.execute();
+    this.addCommand(command);
+    this.render();
   }
 }
