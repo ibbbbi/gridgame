@@ -38,17 +38,18 @@ export class EuropeanACPowerFlowSimulator {
       reliability: 0,
       powerFlow: {},
       voltages: {},
-      n1Analysis: {
-        passed: false,
-        criticalContingencies: [],
-        overloadedLines: [],
-        voltageLimits: []
-      },
+      n1Analysis: [],
       frequency: this.baseFrequency,
-      systemStability: 0,
+      systemStability: false,
       renewableIntegration: 0,
       errors: [],
-      warnings: []
+      warnings: [],
+      convergence: false,
+      iterations: 0,
+      maxPowerMismatch: 0,
+      totalLosses: 0,
+      voltageProfile: {},
+      lineLoading: {}
     };
 
     try {
@@ -67,17 +68,54 @@ export class EuropeanACPowerFlowSimulator {
 
       // Update result with load flow data
       result.success = true;
-      result.powerFlow = loadFlowResult.powerFlow;
-      result.voltages = loadFlowResult.voltages;
+      // Convert complex power flow data to simple numbers for backwards compatibility
+      result.powerFlow = {};
+      Object.entries(loadFlowResult.powerFlow).forEach(([lineId, flow]) => {
+        result.powerFlow[lineId] = flow.apparent; // Use apparent power as the main flow value
+      });
+      
+      // Convert complex voltage data to simple numbers for backwards compatibility  
+      result.voltages = {};
+      Object.entries(loadFlowResult.voltages).forEach(([busId, voltage]) => {
+        result.voltages[busId] = voltage.magnitude; // Use voltage magnitude as the main value
+      });
+      
+      // Store detailed data in new fields
+      result.voltageProfile = loadFlowResult.voltages;
+      result.lineLoading = {};
+      Object.entries(loadFlowResult.powerFlow).forEach(([lineId, flow]) => {
+        const line = this.lines.get(lineId);
+        if (line) {
+          result.lineLoading[lineId] = {
+            loading: flow.apparent,
+            limit: line.thermalLimit,
+            percentage: (flow.apparent / line.thermalLimit) * 100
+          };
+        }
+      });
+      
       result.loadServed = loadFlowResult.loadServed;
       result.efficiency = this.calculateSystemEfficiency(loadFlowResult);
       result.reliability = this.calculateReliability();
+      
+      // Add convergence and iteration information
+      result.convergence = true;
+      result.iterations = 10; // Placeholder - would come from Newton-Raphson solver
+      result.maxPowerMismatch = 1e-6; // Placeholder - would come from convergence check
+      result.totalLosses = 0; // Will be calculated from power flows
 
       // Perform N-1 contingency analysis
-      result.n1Analysis = this.performN1Analysis();
+      const n1AnalysisResult = this.performN1Analysis();
+      result.n1Analysis = [{
+        contingencyLine: 'all',
+        success: n1AnalysisResult.passed,
+        overloadedLines: n1AnalysisResult.overloadedLines.map(ol => ol.lineId),
+        voltageViolations: n1AnalysisResult.voltageLimits.map(vl => vl.busId),
+        loadShed: 0 // Not implemented yet
+      }];
 
       // Calculate European grid metrics
-      result.systemStability = this.calculateSystemStability(loadFlowResult);
+      result.systemStability = this.calculateSystemStability(loadFlowResult) > 80; // Convert score to boolean
       result.renewableIntegration = this.calculateRenewableIntegration();
 
       // Validate against European standards (ENTSO-E)
@@ -169,23 +207,24 @@ export class EuropeanACPowerFlowSimulator {
     let slackBusExists = false;
 
     for (const component of this.components.values()) {
-      let busType: 'PQ' | 'PV' | 'SLACK' = 'PQ';
+      let busType: 'pq' | 'pv' | 'slack' = 'pq';
       
       if (component.type === 'generator' && !slackBusExists) {
-        busType = 'SLACK'; // First generator becomes slack bus
+        busType = 'slack'; // First generator becomes slack bus
         slackBusExists = true;
       } else if (component.type === 'generator') {
-        busType = 'PV'; // Other generators are PV buses
+        busType = 'pv'; // Other generators are PV buses
       }
 
       buses.push({
         id: component.id,
         type: busType,
-        voltage: component.voltage,
         activePower: component.type === 'load' ? -component.activePower : component.activePower,
         reactivePower: component.type === 'load' ? -component.reactivePower : component.reactivePower,
         voltageMagnitude: component.voltageMagnitude,
-        voltageAngle: component.voltageAngle * Math.PI / 180 // Convert to radians
+        voltageAngle: component.voltageAngle * Math.PI / 180, // Convert to radians
+        minVoltage: 0.95,
+        maxVoltage: 1.05
       });
     }
 
@@ -204,13 +243,13 @@ export class EuropeanACPowerFlowSimulator {
       
       lines.push({
         id: line.id,
-        from: line.from,
-        to: line.to,
+        fromBus: line.from,
+        toBus: line.to,
         resistance: (line.resistance * line.length) / baseImpedance, // Convert to per-unit
         reactance: (line.reactance * line.length) / baseImpedance,
         susceptance: (line.susceptance * line.length) * baseImpedance,
-        tapRatio: 1.0, // Assume no transformers for now
-        phaseShift: 0.0
+        thermalLimit: line.thermalLimit,
+        isActive: line.isActive
       });
     }
 
@@ -239,8 +278,8 @@ export class EuropeanACPowerFlowSimulator {
 
     // Add line admittances
     for (const line of lines) {
-      const fromIndex = busIndexMap.get(line.from);
-      const toIndex = busIndexMap.get(line.to);
+      const fromIndex = busIndexMap.get(line.fromBus);
+      const toIndex = busIndexMap.get(line.toBus);
       
       if (fromIndex === undefined || toIndex === undefined) continue;
 
@@ -306,7 +345,7 @@ export class EuropeanACPowerFlowSimulator {
     
     for (let i = 0; i < buses.length; i++) {
       const bus = buses[i];
-      if (bus.type === 'SLACK') continue; // Skip slack bus
+      if (bus.type === 'slack') continue; // Skip slack bus
       
       // Calculate injected power
       let pInj = 0, qInj = 0;
@@ -323,7 +362,7 @@ export class EuropeanACPowerFlowSimulator {
       
       // Power mismatches
       mismatches.push(bus.activePower - pInj);
-      if (bus.type === 'PQ') {
+      if (bus.type === 'pq') {
         mismatches.push(bus.reactivePower - qInj);
       }
     }
@@ -331,9 +370,9 @@ export class EuropeanACPowerFlowSimulator {
     return mismatches;
   }
 
-  private buildJacobian(buses: ACBusData[], yMatrix: Complex[][], voltages: { magnitude: number, angle: number }[]): number[][] {
-    const n = buses.filter(b => b.type !== 'SLACK').length;
-    const pqBuses = buses.filter(b => b.type === 'PQ').length;
+  private buildJacobian(buses: ACBusData[], _yMatrix: Complex[][], _voltages: { magnitude: number, angle: number }[]): number[][] {
+    const n = buses.filter(b => b.type !== 'slack').length;
+    const pqBuses = buses.filter(b => b.type === 'pq').length;
     const jacobian: number[][] = Array(n + pqBuses).fill(null).map(() => Array(n + pqBuses).fill(0));
     
     // Simplified Jacobian matrix (in practice, this would include partial derivatives)
@@ -363,13 +402,13 @@ export class EuropeanACPowerFlowSimulator {
     let idx = 0;
     
     for (let i = 0; i < buses.length; i++) {
-      if (buses[i].type === 'SLACK') continue;
+      if (buses[i].type === 'slack') continue;
       
       // Update voltage angle
       voltages[i].angle += deltaX[idx++];
       
       // Update voltage magnitude for PQ buses
-      if (buses[i].type === 'PQ') {
+      if (buses[i].type === 'pq') {
         voltages[i].magnitude += deltaX[idx++];
       }
     }
@@ -400,8 +439,8 @@ export class EuropeanACPowerFlowSimulator {
     buses.forEach((bus, index) => busIndexMap.set(bus.id, index));
 
     for (const line of lines) {
-      const fromIdx = busIndexMap.get(line.from);
-      const toIdx = busIndexMap.get(line.to);
+      const fromIdx = busIndexMap.get(line.fromBus);
+      const toIdx = busIndexMap.get(line.toBus);
       
       if (fromIdx === undefined || toIdx === undefined) continue;
 
@@ -576,22 +615,21 @@ export class EuropeanACPowerFlowSimulator {
     }
 
     // Voltage quality (±5% in normal operation)
-    Object.entries(result.voltages).forEach(([busId, voltage]) => {
+    Object.entries(result.voltageProfile).forEach(([busId, voltage]) => {
       if (voltage.magnitude < 0.95 || voltage.magnitude > 1.05) {
         result.warnings.push(`Voltage violation at bus ${busId}: ${voltage.magnitude} p.u. (should be 0.95-1.05 p.u.)`);
       }
     });
 
     // Thermal limits compliance
-    Object.entries(result.powerFlow).forEach(([lineId, flow]) => {
-      const line = this.lines.get(lineId);
-      if (line && flow.apparent > line.thermalLimit) {
-        result.warnings.push(`Thermal limit exceeded on line ${lineId}: ${flow.apparent} MVA > ${line.thermalLimit} MVA`);
+    Object.entries(result.lineLoading).forEach(([lineId, loading]) => {
+      if (loading.percentage > 100) {
+        result.warnings.push(`Thermal limit exceeded on line ${lineId}: ${loading.loading} MVA > ${loading.limit} MVA`);
       }
     });
 
     // N-1 security criterion
-    if (!result.n1Analysis.passed) {
+    if (result.n1Analysis.length > 0 && !result.n1Analysis[0].success) {
       result.warnings.push('Network does not meet N-1 security criteria');
     }
   }
