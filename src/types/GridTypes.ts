@@ -8,15 +8,36 @@ export type LineType = 'transmission-line' | 'distribution-line' | 'hvdc-line';
 export type NetworkType = 'radial' | 'meshed';
 export type VoltageLevel = 400 | 220 | 110 | 50 | 20 | 10; // European voltage levels in kV
 
+// Grid Node - allows multiple components to connect to same electrical point
+export interface GridNode {
+  id: string;
+  position: Point;
+  voltage: VoltageLevel;
+  connectedComponents: string[]; // Component IDs connected to this node
+  connectedLines: string[]; // Line IDs connected to this node
+  isVisible: boolean; // Whether to render the node visually
+}
+
+// Command interface for undo/redo functionality
+export interface Command {
+  id: string;
+  type: 'place-component' | 'place-line' | 'delete-component' | 'delete-line' | 'place-node' | 'delete-node';
+  timestamp: number;
+  execute(): void;
+  undo(): void;
+  data: any; // Command-specific data
+}
+
 export interface GridComponent {
   id: string;
   type: ComponentType;
   position: Point;
   capacity: number; // MW
   cost: number;
-  connections: string[]; // IDs of connected components
+  connections: string[]; // IDs of connected components/nodes
   voltage: VoltageLevel; // kV - European standard levels
   isActive: boolean;
+  connectedNode?: string; // Optional: ID of grid node this component is connected to
   // AC power flow parameters
   activePower: number; // MW
   reactivePower: number; // MVAr
@@ -28,8 +49,8 @@ export interface GridComponent {
 export interface PowerLine {
   id: string;
   type: LineType;
-  from: string; // Component ID
-  to: string; // Component ID
+  from: string; // Component ID or Node ID
+  to: string; // Component ID or Node ID
   length: number; // km
   cost: number;
   capacity: number; // MVA (apparent power)
