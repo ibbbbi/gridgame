@@ -64,6 +64,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
+      - name: List files in build context
+        run: |
+          echo "Listing files in the build context:" && ls -R
+
       - name: Build and push Docker image
         id: build-and-push
         uses: docker/build-push-action@v5
