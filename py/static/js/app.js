@@ -18,6 +18,10 @@ class PowerGridApp {
         this.panX = 0;
         this.panY = 0;
         
+        // European game mode
+        this.europeanMode = false;
+        this.simulationRunning = false;
+        
         this.init();
     }
 
@@ -29,8 +33,11 @@ class PowerGridApp {
         
         // Update game status every second
         setInterval(() => this.updateGameStatus(), 1000);
+        
+        // Initialize European mode controls
+        this.setupEuropeanModeControls();
     }
-
+    
     setupEventListeners() {
         // Tool selection
         document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -68,6 +75,30 @@ class PowerGridApp {
         window.addEventListener('resize', () => this.resizeCanvas());
     }
 
+    setupEuropeanModeControls() {
+        // Game mode toggle
+        document.getElementById('classic-mode').addEventListener('click', () => {
+            this.switchToClassicMode();
+        });
+        
+        document.getElementById('european-mode').addEventListener('click', () => {
+            this.switchToEuropeanMode();
+        });
+        
+        // European simulation controls
+        document.getElementById('start-simulation').addEventListener('click', () => {
+            this.startEuropeanSimulation();
+        });
+        
+        document.getElementById('stop-simulation').addEventListener('click', () => {
+            this.stopEuropeanSimulation();
+        });
+        
+        document.getElementById('view-compliance').addEventListener('click', () => {
+            this.showComplianceReport();
+        });
+    }
+    
     selectTool(tool) {
         // Deselect all tools
         document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
@@ -405,6 +436,109 @@ class PowerGridApp {
             document.getElementById('efficiency').textContent = Math.round(status.efficiency);
         } catch (error) {
             console.error('Error updating status:', error);
+        }
+    }
+    
+    async updateEuropeanStatus() {
+        if (!this.europeanMode) return;
+        
+        try {
+            const response = await fetch('/api/european/status');
+            const data = await response.json();
+            
+            // Update frequency display
+            document.getElementById('frequency').textContent = data.frequency.toFixed(3);
+            
+            // Update frequency deviation with color coding
+            const freqDeviationElement = document.getElementById('freq-deviation');
+            const deviation = data.frequency_deviation_mhz;
+            freqDeviationElement.textContent = `${deviation >= 0 ? '+' : ''}${deviation.toFixed(1)} mHz`;
+            
+            // Update system state with color coding
+            const systemStateElement = document.getElementById('system-state');
+            systemStateElement.textContent = data.system_state.toUpperCase();
+            systemStateElement.className = `status-${data.system_state}`;
+            
+            // Update other status fields
+            document.getElementById('generation').textContent = Math.round(data.generation_capacity);
+            document.getElementById('load').textContent = Math.round(data.load_demand);
+            document.getElementById('fcr').textContent = Math.round(data.fcr_available);
+            document.getElementById('fcr-available').textContent = `${Math.round(data.fcr_available)} MW`;
+            document.getElementById('frr-available').textContent = `${Math.round(data.frr_available)} MW`;
+            document.getElementById('compliance-score').textContent = `${data.compliance_score.toFixed(1)}%`;
+            document.getElementById('reliability-score').textContent = `${data.reliability_score.toFixed(1)}%`;
+            document.getElementById('budget').textContent = Math.round(data.budget);
+            
+        } catch (error) {
+            console.error('Failed to update European status:', error);
+        }
+    }
+    
+    async loadEuropeanStandards() {
+        try {
+            const response = await fetch('/api/european/standards');
+            const data = await response.json();
+            console.log('European Standards loaded:', data);
+        } catch (error) {
+            console.error('Failed to load European standards:', error);
+        }
+    }
+    
+    async startEuropeanSimulation() {
+        try {
+            const response = await fetch('/api/european/start_simulation', {
+                method: 'POST'
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                this.simulationRunning = true;
+                document.getElementById('start-simulation').style.display = 'none';
+                document.getElementById('stop-simulation').style.display = 'inline-block';
+                console.log('European simulation started');
+                
+                // Start updating European status more frequently
+                this.europeanStatusInterval = setInterval(() => {
+                    this.updateEuropeanStatus();
+                }, 1000);
+            }
+        } catch (error) {
+            console.error('Failed to start simulation:', error);
+        }
+    }
+    
+    async stopEuropeanSimulation() {
+        try {
+            const response = await fetch('/api/european/stop_simulation', {
+                method: 'POST'
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                this.simulationRunning = false;
+                document.getElementById('start-simulation').style.display = 'inline-block';
+                document.getElementById('stop-simulation').style.display = 'none';
+                console.log('European simulation stopped');
+                
+                if (this.europeanStatusInterval) {
+                    clearInterval(this.europeanStatusInterval);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to stop simulation:', error);
+        }
+    }
+    
+    async showComplianceReport() {
+        try {
+            const response = await fetch('/api/european/compliance');
+            const data = await response.json();
+            
+            // Show compliance report in a modal or alert
+            alert(data.summary);
+            
+        } catch (error) {
+            console.error('Failed to get compliance report:', error);
         }
     }
 

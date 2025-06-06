@@ -10,6 +10,7 @@ from grid_types import (
     GridComponent, PowerLine, SimulationResult, NetworkType, ACBusData, ACLineData,
     N1AnalysisResult, Complex, VoltageLevel
 )
+from european_grid_standards import EuropeanGridStandards
 
 class EuropeanACPowerFlowSimulator:
     """
@@ -21,17 +22,48 @@ class EuropeanACPowerFlowSimulator:
         self.components: Dict[str, GridComponent] = {}
         self.lines: Dict[str, PowerLine] = {}
         self.network_type: NetworkType = 'radial'
-        self.base_frequency = 50.0  # European standard 50 Hz
+        
+        # Use official European Grid Standards
+        self.standards = EuropeanGridStandards()
+        self.base_frequency = self.standards.frequency.nominal_frequency  # 50 Hz
         self.base_mva = 100.0  # Base MVA for per-unit calculations
-        self.voltage_tolerances = {'min': 0.95, 'max': 1.05}  # European voltage limits (±5%)
+        
+        # Continental Europe voltage tolerances from SO GL
+        self.voltage_tolerances = {
+            'min_110_300': self.standards.voltage.voltage_110_300kv_min,  # 0.90 pu
+            'max_110_300': self.standards.voltage.voltage_110_300kv_max,  # 1.118 pu
+            'min_300_400': self.standards.voltage.voltage_300_400kv_min,  # 0.90 pu
+            'max_300_400': self.standards.voltage.voltage_300_400kv_max   # 1.05 pu
+        }
+        
+        # SO GL operational parameters
         self.max_iterations = 20
         self.tolerance = 1e-6
+        self.current_frequency_deviation = 0.0  # Track frequency for FCR activation
         
-        # Component configuration matching TypeScript version
+        # Enhanced component configuration with European standards
         self.component_config = {
-            'generator': {'cost': 10000, 'capacity_range': [50, 150], 'voltage': 220},
-            'substation': {'cost': 5000, 'capacity_range': [200, 200], 'voltage': 110},
-            'load': {'cost': 0, 'capacity_range': [20, 100], 'voltage': 20}
+            'generator': {
+                'cost': 15000, 
+                'capacity_range': [100, 800],  # MW - typical European generators
+                'voltage': 400,  # 400 kV transmission level
+                'fcr_capability': True,
+                'frr_capability': True
+            },
+            'substation': {
+                'cost': 8000, 
+                'capacity_range': [300, 1000],  # MVA - European substations
+                'voltage': 220,  # 220 kV sub-transmission
+                'fcr_capability': False,
+                'frr_capability': False
+            },
+            'load': {
+                'cost': 0, 
+                'capacity_range': [50, 500],  # MW - European load centers
+                'voltage': 110,  # 110 kV distribution
+                'fcr_capability': False,
+                'frr_capability': False
+            }
         }
     
     def set_components(self, components: List[GridComponent]) -> None:
@@ -51,22 +83,30 @@ class EuropeanACPowerFlowSimulator:
         self.network_type = network_type
     
     def get_line_resistance(self, line_type: str, length: float) -> float:
-        """Calculate line resistance based on European standards"""
-        resistance_per_km = {
-            'transmission-line': 0.03,  # 400kV/220kV lines
-            'distribution-line': 0.2,   # 20kV/10kV lines
-            'hvdc-line': 0.01          # HVDC lines
-        }
-        return resistance_per_km.get(line_type, 0.1) * length
+        """Calculate line resistance based on Continental Europe SO GL standards"""
+        if line_type == 'transmission-line':
+            # Use 400 kV parameters for transmission lines
+            return self.standards.network.transmission_400kv_resistance * length
+        elif line_type == 'distribution-line':
+            # Use 110 kV parameters for distribution lines  
+            return self.standards.network.distribution_110kv_resistance * length
+        elif line_type == 'hvdc-line':
+            return 0.01 * length  # HVDC lines
+        else:
+            return 0.1 * length  # Default fallback
     
     def get_line_reactance(self, line_type: str, length: float) -> float:
-        """Calculate line reactance based on European standards"""
-        reactance_per_km = {
-            'transmission-line': 0.3,   # 400kV/220kV lines
-            'distribution-line': 0.4,   # 20kV/10kV lines
-            'hvdc-line': 0.0           # HVDC has no reactance
-        }
-        return reactance_per_km.get(line_type, 0.3) * length
+        """Calculate line reactance based on Continental Europe SO GL standards"""
+        if line_type == 'transmission-line':
+            # Use 400 kV parameters for transmission lines
+            return self.standards.network.transmission_400kv_reactance * length
+        elif line_type == 'distribution-line':
+            # Use 110 kV parameters for distribution lines
+            return self.standards.network.distribution_110kv_reactance * length
+        elif line_type == 'hvdc-line':
+            return 0.0  # HVDC has no reactance
+        else:
+            return 0.3 * length  # Default fallback
     
     def get_line_susceptance(self, line_type: str, length: float) -> float:
         """Calculate line susceptance based on European standards"""

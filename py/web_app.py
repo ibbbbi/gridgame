@@ -7,15 +7,30 @@ Provides an interactive web interface for the power grid simulation game.
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import json
 import uuid
+import threading
+import time
 from typing import Dict, Any
 from power_grid_game import PowerGridGame
 from grid_types import Point
+from european_grid_game import EuropeanGridGame
 
 app = Flask(__name__)
 app.secret_key = 'power-grid-game-secret-key'
 
-# Global game instance
-game = PowerGridGame()
+# Global game instances
+game = PowerGridGame()  # Original game
+european_game = EuropeanGridGame()  # New realistic European game
+
+# Game simulation thread
+simulation_running = False
+simulation_thread = None
+
+def run_simulation():
+    """Background simulation thread for European game"""
+    global simulation_running
+    while simulation_running:
+        european_game.step(1.0)  # 1 second time step
+        time.sleep(1)  # Real-time simulation
 
 @app.route('/')
 def index():
@@ -29,18 +44,23 @@ def static_files(filename):
 
 @app.route('/api/game/status')
 def get_game_status():
-    """Get current game status"""
-    stats = game.get_stats()
+    """Get current European game status"""
+    status = european_game.get_game_status()
     return jsonify({
-        'budget': stats.budget,
-        'totalGeneration': stats.total_generation,
-        'totalLoad': stats.total_load,
-        'loadServed': stats.load_served,
-        'efficiency': stats.efficiency,
-        'reliability': stats.reliability,
-        'components': len(game.components),
-        'lines': len(game.lines),
-        'nodes': len(game.grid_nodes)
+        'budget': status['budget'],
+        'frequency': status['frequency'],
+        'frequency_deviation_mhz': status['frequency_deviation_mhz'],
+        'system_state': status['system_state'],
+        'load_demand': status['load_demand'],
+        'generation_capacity': status['generation_capacity'],
+        'fcr_available': status['fcr_available'],
+        'frr_available': status['frr_available'],
+        'reliability_score': status['stats'].reliability_score,
+        'compliance_score': status['stats'].compliance_score,
+        'efficiency_score': status['stats'].efficiency_score,
+        'components_count': status['components_count'],
+        'lines_count': status['lines_count'],
+        'time_elapsed': status['time_elapsed']
     })
 
 @app.route('/api/game/components')
@@ -232,6 +252,117 @@ def get_game_info():
             }
         }
     })
+
+@app.route('/api/european/status')
+def get_european_status():
+    """Get detailed European grid status with SO GL compliance"""
+    status = european_game.get_game_status()
+    return jsonify(status)
+
+@app.route('/api/european/standards')
+def get_european_standards():
+    """Get Continental Europe SO GL standards summary"""
+    return jsonify({
+        'summary': european_game.standards.get_grid_code_summary(),
+        'frequency_standards': {
+            'nominal': european_game.standards.frequency.nominal_frequency,
+            'standard_range': european_game.standards.frequency.standard_frequency_range * 1000,  # mHz
+            'alert_limit': european_game.standards.frequency.max_steady_state_frequency_deviation * 1000,  # mHz
+            'emergency_limit': european_game.standards.frequency.max_instantaneous_frequency_deviation * 1000,  # mHz
+            'fcr_activation_time': european_game.standards.frequency.fcr_full_activation_time,
+            'time_to_restore': european_game.standards.frequency.time_to_restore_frequency
+        },
+        'voltage_standards': {
+            'voltage_110_300_min': european_game.standards.voltage.voltage_110_300kv_min,
+            'voltage_110_300_max': european_game.standards.voltage.voltage_110_300kv_max,
+            'voltage_300_400_min': european_game.standards.voltage.voltage_300_400kv_min,
+            'voltage_300_400_max': european_game.standards.voltage.voltage_300_400kv_max
+        }
+    })
+
+@app.route('/api/european/components')
+def get_european_components():
+    """Get available European component types"""
+    return jsonify({
+        'types': european_game.component_types,
+        'current_components': european_game.components
+    })
+
+@app.route('/api/european/add_component', methods=['POST'])
+def add_european_component():
+    """Add a component to the European grid"""
+    data = request.get_json()
+    component_type = data.get('type')
+    x = data.get('x', 0)
+    y = data.get('y', 0)
+    
+    component_id = european_game.add_component(component_type, x, y)
+    if component_id:
+        return jsonify({
+            'success': True,
+            'component_id': component_id,
+            'budget_remaining': european_game.budget
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': 'Insufficient budget or invalid component type'
+        }), 400
+
+@app.route('/api/european/add_line', methods=['POST'])
+def add_european_line():
+    """Add a transmission line to the European grid"""
+    data = request.get_json()
+    from_comp = data.get('from')
+    to_comp = data.get('to')
+    voltage_level = data.get('voltage_level', 400)
+    
+    line_id = european_game.add_transmission_line(from_comp, to_comp, voltage_level)
+    if line_id:
+        return jsonify({
+            'success': True,
+            'line_id': line_id,
+            'budget_remaining': european_game.budget
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': 'Invalid components or insufficient budget'
+        }), 400
+
+@app.route('/api/european/compliance')
+def get_compliance_status():
+    """Get SO GL compliance status"""
+    return jsonify({
+        'summary': european_game.get_so_gl_summary(),
+        'compliance_details': european_game.standards.check_so_gl_compliance({
+            'frequency_deviation': european_game.frequency_deviation,
+            'voltages': {},
+            'fcr_available': european_game.fcr_available,
+            'n_minus_1_secure': european_game.check_n_minus_1_security()
+        })
+    })
+
+@app.route('/api/european/start_simulation', methods=['POST'])
+def start_european_simulation():
+    """Start the European grid simulation"""
+    global simulation_running, simulation_thread
+    
+    if not simulation_running:
+        simulation_running = True
+        simulation_thread = threading.Thread(target=run_simulation)
+        simulation_thread.daemon = True
+        simulation_thread.start()
+        return jsonify({'success': True, 'message': 'Simulation started'})
+    else:
+        return jsonify({'success': False, 'message': 'Simulation already running'})
+
+@app.route('/api/european/stop_simulation', methods=['POST'])
+def stop_european_simulation():
+    """Stop the European grid simulation"""
+    global simulation_running
+    simulation_running = False
+    return jsonify({'success': True, 'message': 'Simulation stopped'})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

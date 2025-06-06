@@ -11,11 +11,19 @@
     <div class="app-container">
         <!-- Header -->
         <header class="header">
-            <h1><i class="fas fa-bolt"></i> Power Grid Builder</h1>
+            <h1><i class="fas fa-bolt"></i> European Power Grid Builder</h1>
+            <div class="game-mode-toggle">
+                <button id="classic-mode" class="mode-btn active">Classic Mode</button>
+                <button id="european-mode" class="mode-btn">European SO GL Mode</button>
+            </div>
             <div class="header-stats">
                 <div class="stat-item">
-                    <i class="fas fa-dollar-sign"></i>
-                    <span>Budget: $<span id="budget">500000</span></span>
+                    <i class="fas fa-euro-sign"></i>
+                    <span>Budget: €<span id="budget">500000</span></span>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-wave-square"></i>
+                    <span>Frequency: <span id="frequency">50.000</span> Hz</span>
                 </div>
                 <div class="stat-item">
                     <i class="fas fa-plug"></i>
@@ -26,8 +34,8 @@
                     <span>Load: <span id="load">0</span> MW</span>
                 </div>
                 <div class="stat-item">
-                    <i class="fas fa-tachometer-alt"></i>
-                    <span>Efficiency: <span id="efficiency">0</span>%</span>
+                    <i class="fas fa-shield-alt"></i>
+                    <span>FCR: <span id="fcr">0</span> MW</span>
                 </div>
             </div>
         </header>
@@ -36,19 +44,101 @@
         <div class="main-content">
             <!-- Toolbar -->
             <div class="toolbar">
-                <div class="tool-section">
-                    <h3>Components</h3>
-                    <button class="tool-btn" data-tool="generator" title="Generator (50-150 MW) - $10,000">
+                <!-- Classic Mode Components -->
+                <div class="tool-section classic-tools">
+                    <h3>Classic Components</h3>
+                    <button class="tool-btn" data-tool="generator" title="Generator (50-150 MW) - €10,000">
                         <i class="fas fa-industry"></i>
                         <div class="tool-info">
                             <span class="tool-name">Generator</span>
-                            <span class="tool-price">$10,000</span>
+                            <span class="tool-price">€10,000</span>
                         </div>
                     </button>
-                    <button class="tool-btn" data-tool="substation" title="Substation (200 MW) - $5,000">
+                    <button class="tool-btn" data-tool="substation" title="Substation (200 MW) - €5,000">
                         <i class="fas fa-building"></i>
                         <div class="tool-info">
                             <span class="tool-name">Substation</span>
+                            <span class="tool-price">€5,000</span>
+                        </div>
+                    </button>
+                    <button class="tool-btn" data-tool="load" title="Load Center (20-100 MW) - Free">
+                        <i class="fas fa-home"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">Load Center</span>
+                            <span class="tool-price">Free</span>
+                        </div>
+                    </button>
+                </div>
+                
+                <!-- European Mode Components -->
+                <div class="tool-section european-tools" style="display: none;">
+                    <h3>Power Plants</h3>
+                    <button class="tool-btn" data-tool="nuclear_plant" title="Nuclear Plant (1400 MW, 50 MW FCR) - €80,000">
+                        <i class="fas fa-atom"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">Nuclear Plant</span>
+                            <span class="tool-price">€80,000</span>
+                        </div>
+                    </button>
+                    <button class="tool-btn" data-tool="coal_plant" title="Coal Plant (800 MW, 40 MW FCR) - €40,000">
+                        <i class="fas fa-industry"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">Coal Plant</span>
+                            <span class="tool-price">€40,000</span>
+                        </div>
+                    </button>
+                    <button class="tool-btn" data-tool="gas_plant" title="Gas Plant (400 MW, 30 MW FCR) - €25,000">
+                        <i class="fas fa-fire"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">Gas Plant</span>
+                            <span class="tool-price">€25,000</span>
+                        </div>
+                    </button>
+                    <button class="tool-btn" data-tool="hydro_plant" title="Hydro Plant (300 MW, 50 MW FCR) - €35,000">
+                        <i class="fas fa-water"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">Hydro Plant</span>
+                            <span class="tool-price">€35,000</span>
+                        </div>
+                    </button>
+                    <button class="tool-btn" data-tool="wind_farm" title="Wind Farm (200 MW) - €20,000">
+                        <i class="fas fa-wind"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">Wind Farm</span>
+                            <span class="tool-price">€20,000</span>
+                        </div>
+                    </button>
+                    <button class="tool-btn" data-tool="solar_farm" title="Solar Farm (100 MW) - €15,000">
+                        <i class="fas fa-sun"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">Solar Farm</span>
+                            <span class="tool-price">€15,000</span>
+                        </div>
+                    </button>
+                    
+                    <h3>Infrastructure</h3>
+                    <button class="tool-btn" data-tool="substation_400" title="400 kV Substation - €15,000">
+                        <i class="fas fa-building"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">400 kV Substation</span>
+                            <span class="tool-price">€15,000</span>
+                        </div>
+                    </button>
+                    <button class="tool-btn" data-tool="substation_220" title="220 kV Substation - €8,000">
+                        <i class="fas fa-building-columns"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">220 kV Substation</span>
+                            <span class="tool-price">€8,000</span>
+                        </div>
+                    </button>
+                    <button class="tool-btn" data-tool="load_center" title="Load Center (300 MW) - Free">
+                        <i class="fas fa-city"></i>
+                        <div class="tool-info">
+                            <span class="tool-name">Load Center</span>
+                            <span class="tool-price">Free</span>
+                        </div>
+                    </button>
+                </div>
                             <span class="tool-price">$5,000</span>
                         </div>
                     </button>
@@ -175,6 +265,51 @@
                         <button class="btn btn-primary" id="confirm-config">Place Component</button>
                         <button class="btn btn-secondary" id="cancel-config">Cancel</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- European Status Panel -->
+        <div class="european-status" id="european-status" style="display: none;">
+            <div class="status-section">
+                <h3><i class="fas fa-flag"></i> Continental Europe SO GL Status</h3>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <label>System State:</label>
+                        <span id="system-state" class="status-normal">NORMAL</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Frequency Deviation:</label>
+                        <span id="freq-deviation">+0.0 mHz</span>
+                    </div>
+                    <div class="status-item">
+                        <label>FCR Available:</label>
+                        <span id="fcr-available">0 MW</span>
+                    </div>
+                    <div class="status-item">
+                        <label>FRR Available:</label>
+                        <span id="frr-available">0 MW</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Compliance Score:</label>
+                        <span id="compliance-score">100%</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Reliability Score:</label>
+                        <span id="reliability-score">100%</span>
+                    </div>
+                </div>
+                
+                <div class="simulation-controls">
+                    <button id="start-simulation" class="control-btn">
+                        <i class="fas fa-play"></i> Start Simulation
+                    </button>
+                    <button id="stop-simulation" class="control-btn" style="display: none;">
+                        <i class="fas fa-stop"></i> Stop Simulation
+                    </button>
+                    <button id="view-compliance" class="control-btn">
+                        <i class="fas fa-clipboard-check"></i> View SO GL Compliance
+                    </button>
                 </div>
             </div>
         </div>
