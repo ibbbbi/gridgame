@@ -20,7 +20,7 @@ export class PowerGridGame {
   private lineStart: string | null = null;
   
   private stats: GridStats = {
-    budget: 100000,
+    budget: 10000000,
     totalGeneration: 0,
     totalLoad: 0,
     loadServed: 0,
