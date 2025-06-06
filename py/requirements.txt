@@ -1,0 +1,5 @@
+# Requirements for Power Grid Builder Python CLI Version
+
+# Core dependencies
+numpy>=1.21.0
+flask>=2.0.0
