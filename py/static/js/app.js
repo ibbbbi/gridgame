@@ -260,6 +260,7 @@ class PowerGridApp {
             
             if (result.success) {
                 this.loadGameData();
+                this.updateGameStatus(); // Immediately update budget and stats
             }
         } catch (error) {
             this.showMessage('Error placing component: ' + error.message, 'error');
@@ -285,6 +286,7 @@ class PowerGridApp {
             
             if (result.success) {
                 this.loadGameData();
+                this.updateGameStatus(); // Immediately update budget and stats
             }
         } catch (error) {
             this.showMessage('Error placing node: ' + error.message, 'error');
@@ -349,6 +351,7 @@ class PowerGridApp {
             
             if (result.success) {
                 this.loadGameData();
+                this.updateGameStatus(); // Immediately update budget and stats
             }
         } catch (error) {
             this.showMessage('Error creating line: ' + error.message, 'error');
@@ -378,7 +381,18 @@ class PowerGridApp {
             const response = await fetch('/api/game/status');
             const status = await response.json();
             
-            document.getElementById('budget').textContent = status.budget.toLocaleString();
+            // Store previous budget for comparison
+            const previousBudget = this.currentBudget || status.budget;
+            this.currentBudget = status.budget;
+            
+            // Update budget with animation if it changed
+            const budgetElement = document.getElementById('budget');
+            if (previousBudget !== status.budget) {
+                budgetElement.classList.add('budget-updated');
+                setTimeout(() => budgetElement.classList.remove('budget-updated'), 1000);
+            }
+            
+            budgetElement.textContent = status.budget.toLocaleString();
             document.getElementById('generation').textContent = Math.round(status.totalGeneration);
             document.getElementById('load').textContent = Math.round(status.totalLoad);
             document.getElementById('efficiency').textContent = Math.round(status.efficiency);
@@ -662,7 +676,10 @@ class PowerGridApp {
             const response = await fetch('/api/game/undo', { method: 'POST' });
             const result = await response.json();
             this.showMessage(result.message, result.success ? 'success' : 'warning');
-            if (result.success) this.loadGameData();
+            if (result.success) {
+                this.loadGameData();
+                this.updateGameStatus(); // Immediately update budget and stats
+            }
         } catch (error) {
             this.showMessage('Error undoing action: ' + error.message, 'error');
         }
@@ -673,7 +690,10 @@ class PowerGridApp {
             const response = await fetch('/api/game/redo', { method: 'POST' });
             const result = await response.json();
             this.showMessage(result.message, result.success ? 'success' : 'warning');
-            if (result.success) this.loadGameData();
+            if (result.success) {
+                this.loadGameData();
+                this.updateGameStatus(); // Immediately update budget and stats
+            }
         } catch (error) {
             this.showMessage('Error redoing action: ' + error.message, 'error');
         }
@@ -687,6 +707,7 @@ class PowerGridApp {
                 this.showMessage(result.message, result.success ? 'success' : 'error');
                 if (result.success) {
                     this.loadGameData();
+                    this.updateGameStatus(); // Immediately update budget and stats
                     this.selectTool(null);
                 }
             } catch (error) {
