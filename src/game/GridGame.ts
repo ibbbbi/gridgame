@@ -1,6 +1,13 @@
 import { GridComponent, PowerLine, Point, ComponentType, LineType, NetworkType, GridStats, VoltageLevel, GridNode, Command } from '../types/GridTypes';
 import { EuropeanACPowerFlowSimulator } from '../simulation/EuropeanPowerFlowSimulator';
 
+// Define configurable values for components
+const COMPONENT_CONFIG = {
+  generator: { cost: 10000, capacityRange: [50, 150], voltage: 220 as VoltageLevel },
+  substation: { cost: 5000, capacityRange: [200, 200], voltage: 110 as VoltageLevel },
+  load: { cost: 0, capacityRange: [20, 100], voltage: 20 as VoltageLevel }
+};
+
 export class PowerGridGame {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -20,7 +27,7 @@ export class PowerGridGame {
   private lineStart: string | null = null;
   
   private stats: GridStats = {
-    budget: 10000000,
+    budget: 500000, // Increased by 500%
     totalGeneration: 0,
     totalLoad: 0,
     loadServed: 0,
@@ -211,57 +218,35 @@ export class PowerGridGame {
   }
 
   private getComponentCost(type: ComponentType): number {
-    const costs = {
-      generator: 10000,
-      substation: 5000,
-      load: 0
-    };
-    return costs[type];
+    return COMPONENT_CONFIG[type].cost;
   }
 
   private getComponentCapacity(type: ComponentType): number {
-    const capacities = {
-      generator: 50 + Math.random() * 100, // 50-150 MW
-      substation: 200, // 200 MW transfer capacity
-      load: 20 + Math.random() * 80 // 20-100 MW demand
-    };
-    return Math.round(capacities[type]);
+    const [min, max] = COMPONENT_CONFIG[type].capacityRange;
+    return Math.round(min + Math.random() * (max - min));
   }
 
   private getComponentVoltage(type: ComponentType): VoltageLevel {
-    const voltages: Record<ComponentType, VoltageLevel> = {
-      generator: 220, // 220 kV European transmission
-      substation: 110, // 110 kV European sub-transmission
-      load: 20 // 20 kV European distribution
-    };
-    return voltages[type];
+    return COMPONENT_CONFIG[type].voltage;
   }
 
   private getComponentActivePower(type: ComponentType): number {
-    switch (type) {
-      case 'generator':
-        return this.getComponentCapacity(type); // Full capacity for generators
-      case 'load':
-        return -this.getComponentCapacity(type); // Negative for loads (consuming power)
-      case 'substation':
-        return 0; // Substations don't generate or consume active power
-      default:
-        return 0;
+    if (type === 'generator') {
+      return this.getComponentCapacity(type); // Full capacity for generators
+    } else if (type === 'load') {
+      return -this.getComponentCapacity(type); // Negative for loads (consuming power)
+    } else {
+      return 0; // Substations don't generate or consume active power
     }
   }
 
   private getComponentReactivePower(type: ComponentType): number {
-    switch (type) {
-      case 'generator':
-        // Generators can provide reactive power (power factor ~0.9)
-        return this.getComponentCapacity(type) * 0.45; // tan(acos(0.9))
-      case 'load':
-        // Loads typically consume reactive power
-        return -this.getComponentCapacity(type) * 0.3;
-      case 'substation':
-        return 0; // Substations don't generate or consume reactive power
-      default:
-        return 0;
+    if (type === 'generator') {
+      return this.getComponentCapacity(type) * 0.45; // tan(acos(0.9))
+    } else if (type === 'load') {
+      return -this.getComponentCapacity(type) * 0.3;
+    } else {
+      return 0; // Substations don't generate or consume reactive power
     }
   }
 
@@ -546,7 +531,7 @@ Errors:
     this.components.clear();
     this.lines.clear();
     this.gridNodes.clear();
-    this.stats.budget = 100000;
+    this.stats.budget = 500000;
     this.stats.loadServed = 0;
     this.stats.efficiency = 0;
     this.stats.reliability = 0;
