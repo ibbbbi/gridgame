@@ -77,12 +77,19 @@ class PowerGridApp {
             this.canvas.style.cursor = 'default';
         } else {
             this.currentTool = tool;
-            document.querySelector(`[data-tool="${tool}"]`).classList.add('active');
+            
+            // Only try to add active class if tool is not null
+            if (tool) {
+                const toolElement = document.querySelector(`[data-tool="${tool}"]`);
+                if (toolElement) {
+                    toolElement.classList.add('active');
+                }
+            }
             
             if (['transmission-line', 'distribution-line', 'hvdc-line'].includes(tool)) {
                 this.canvas.style.cursor = 'crosshair';
             } else {
-                this.canvas.style.cursor = 'copy';
+                this.canvas.style.cursor = tool ? 'copy' : 'default';
             }
         }
         

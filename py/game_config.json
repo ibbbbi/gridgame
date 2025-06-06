@@ -1,0 +1,108 @@
+{
+  "game_settings": {
+    "initial_budget": 100000,
+    "difficulty": "medium",
+    "time_limit": 300,
+    "grid_size": 8,
+    "target_score": 1000
+  },
+  "components": {
+    "generators": [
+      {
+        "name": "Coal Plant",
+        "capacity": 500,
+        "cost": 50000,
+        "reliability": 0.85
+      },
+      {
+        "name": "Gas Plant",
+        "capacity": 300,
+        "cost": 30000,
+        "reliability": 0.9
+      },
+      {
+        "name": "Nuclear Plant",
+        "capacity": 1000,
+        "cost": 100000,
+        "reliability": 0.95
+      },
+      {
+        "name": "Solar Farm",
+        "capacity": 100,
+        "cost": 15000,
+        "reliability": 0.7
+      },
+      {
+        "name": "Wind Farm",
+        "capacity": 150,
+        "cost": 20000,
+        "reliability": 0.75
+      },
+      {
+        "name": "Hydro Plant",
+        "capacity": 200,
+        "cost": 25000,
+        "reliability": 0.92
+      }
+    ],
+    "substations": [
+      {
+        "name": "Small Substation",
+        "capacity": 200,
+        "cost": 5000
+      },
+      {
+        "name": "Medium Substation",
+        "capacity": 500,
+        "cost": 12000
+      },
+      {
+        "name": "Large Substation",
+        "capacity": 1000,
+        "cost": 25000
+      }
+    ],
+    "load_centers": [
+      {
+        "name": "Residential Area",
+        "capacity": 100,
+        "cost": 0,
+        "demand": 80
+      },
+      {
+        "name": "Commercial District",
+        "capacity": 200,
+        "cost": 0,
+        "demand": 150
+      },
+      {
+        "name": "Industrial Zone",
+        "capacity": 500,
+        "cost": 0,
+        "demand": 400
+      }
+    ]
+  },
+  "transmission_lines": [
+    {
+      "type": "Distribution Line",
+      "capacity": 50,
+      "cost_per_km": 1000
+    },
+    {
+      "type": "Transmission Line",
+      "capacity": 300,
+      "cost_per_km": 2000
+    },
+    {
+      "type": "High Voltage Line",
+      "capacity": 800,
+      "cost_per_km": 5000
+    },
+    {
+      "type": "Underground Cable",
+      "capacity": 200,
+      "cost_per_km": 8000
+    }
+  ]
+}
