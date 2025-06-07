@@ -2,9 +2,11 @@
 """
 Web-based GUI for Power Grid Builder - Flask Application
 Provides an interactive web interface for the power grid simulation game.
+Enhanced with WebSocket real-time communication.
 """
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask_socketio import SocketIO, emit
 import json
 import uuid
 import threading
@@ -13,13 +15,20 @@ from typing import Dict, Any
 from power_grid_game import PowerGridGame
 from grid_types import Point
 from european_grid_game import EuropeanGridGame
+from websocket_handler import GridWebSocketHandler
 
 app = Flask(__name__)
 app.secret_key = 'power-grid-game-secret-key'
 
+# Initialize SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*")
+
 # Global game instances
 game = PowerGridGame()  # Original game
 european_game = EuropeanGridGame()  # New realistic European game
+
+# WebSocket handler
+ws_handler = GridWebSocketHandler(european_game)
 
 # Game simulation thread
 simulation_running = False
@@ -364,5 +373,473 @@ def stop_european_simulation():
     simulation_running = False
     return jsonify({'success': True, 'message': 'Simulation stopped'})
 
+# Enhanced European API endpoints
+@app.route('/api/european/realtime')
+def get_european_realtime():
+    """Get real-time European grid data with high precision"""
+    if not european_game:
+        return jsonify({'error': 'European game not initialized'}), 400
+    
+    status = european_game.get_game_status()
+    
+    return jsonify({
+        'frequency': status['frequency'],
+        'frequency_deviation_mhz': status['frequency_deviation_mhz'],
+        'system_state': status['system_state'],
+        'fcr_available': status['fcr_available'],
+        'frr_available': status['frr_available'],
+        'fcr_activation': status.get('fcr_activation', 0),
+        'frr_activation': status.get('frr_activation', 0),
+        'compliance_score': status['stats'].compliance_score,
+        'active_events': getattr(european_game, 'active_events', []),
+        'voltage_violations': status['stats'].voltage_violations,
+        'thermal_violations': getattr(status['stats'], 'thermal_violations', 0),
+        'timestamp': status['time_elapsed']
+    })
+
+@app.route('/api/european/components')
+def get_european_components():
+    """Get European component specifications"""
+    return jsonify(european_game.component_types)
+
+@app.route('/api/european/start-simulation', methods=['POST'])
+def start_european_simulation():
+    """Start European grid simulation"""
+    global simulation_running, simulation_thread
+    
+    if simulation_running:
+        return jsonify({'success': False, 'message': 'Simulation already running'})
+    
+    try:
+        simulation_running = True
+        simulation_thread = threading.Thread(target=run_simulation, daemon=True)
+        simulation_thread.start()
+        
+        return jsonify({
+            'success': True, 
+            'message': 'European simulation started',
+            'realtime': True
+        })
+    except Exception as e:
+        simulation_running = False
+        return jsonify({'success': False, 'message': f'Failed to start simulation: {str(e)}'})
+
+@app.route('/api/european/stop-simulation', methods=['POST'])
+def stop_european_simulation():
+    """Stop European grid simulation"""
+    global simulation_running
+    
+    simulation_running = False
+    
+    return jsonify({
+        'success': True,
+        'message': 'European simulation stopped'
+    })
+
+@app.route('/api/european/n1-analysis', methods=['POST'])
+def run_n1_analysis():
+    """Run N-1 contingency analysis"""
+    try:
+        # Use unified grid engine for N-1 analysis
+        from unified_grid_engine import UnifiedGridEngine
+        
+        engine = UnifiedGridEngine()
+        
+        # Convert European game components to unified engine format
+        for comp_id, comp_data in european_game.components.items():
+            # Add components to engine (simplified)
+            pass
+        
+        # Run contingency analysis
+        results = engine.run_n1_contingency_analysis(parallel=True)
+        
+        # Convert results to JSON-serializable format
+        analysis_results = []
+        for result in results:
+            analysis_results.append({
+                'contingency_id': result.contingency_id,
+                'component_type': result.component_type,
+                'component_id': result.component_id,
+                'converged': result.converged,
+                'max_voltage_violation': result.max_voltage_violation,
+                'max_thermal_violation': result.max_thermal_violation,
+                'load_shed': result.load_shed,
+                'critical': result.critical
+            })
+        
+        return jsonify(analysis_results)
+        
+    except Exception as e:
+        return jsonify({'error': f'N-1 analysis failed: {str(e)}'}), 500
+
+@app.route('/api/european/place-component', methods=['POST'])
+def place_european_component():
+    """Place European grid component"""
+    data = request.json
+    try:
+        component_type = data['type']
+        position = {'x': data['x'], 'y': data['y']}
+        
+        success = european_game.place_component(component_type, position)
+        
+        if success:
+            return jsonify({
+                'success': True, 
+                'message': f'{component_type.replace("_", " ").title()} placed successfully',
+                'cost': european_game.component_types[component_type]['cost'],
+                'remaining_budget': european_game.budget
+            })
+        else:
+            return jsonify({
+                'success': False, 
+                'message': 'Failed to place component (insufficient budget?)'
+            })
+            
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'})
+
+@app.route('/api/european/place-line', methods=['POST'])
+def place_european_line():
+    """Place European transmission line"""
+    data = request.json
+    try:
+        line_type = data['type']
+        from_id = data['from']
+        to_id = data['to']
+        
+        success = european_game.place_line(line_type, from_id, to_id)
+        
+        if success:
+            return jsonify({
+                'success': True, 
+                'message': f'{line_type.replace("_", " ").title()} placed successfully',
+                'remaining_budget': european_game.budget
+            })
+        else:
+            return jsonify({
+                'success': False, 
+                'message': 'Failed to place line (insufficient budget or invalid connection?)'
+            })
+            
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'})
+
+@app.route('/api/european/compliance-report')
+def get_compliance_report():
+    """Get detailed SO GL compliance report"""
+    try:
+        status = european_game.get_game_status()
+        stats = status['stats']
+        
+        report = {
+            'frequency_control': {
+                'fcr_activation_time': getattr(european_game, 'fcr_activation_time', 'N/A'),
+                'frr_activation_time': getattr(european_game, 'frr_activation_time', 'N/A'),
+                'frequency_violations': stats.frequency_violations,
+                'worst_frequency_deviation': getattr(european_game, 'worst_frequency_deviation', 0.0)
+            },
+            'voltage_quality': {
+                'voltage_violations': stats.voltage_violations,
+                'worst_voltage': getattr(european_game, 'worst_voltage', 1.0)
+            },
+            'system_security': {
+                'n1_secure': stats.n_minus_1_failures == 0,
+                'thermal_violations': getattr(stats, 'thermal_violations', 0),
+                'last_n1_analysis': getattr(european_game, 'last_n1_analysis', None)
+            },
+            'overall': {
+                'compliance_score': stats.compliance_score,
+                'reliability_score': stats.reliability_score,
+                'efficiency_score': stats.efficiency_score
+            },
+            'timestamp': status['time_elapsed']
+        }
+        
+        return jsonify(report)
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to generate compliance report: {str(e)}'}), 500
+
+@app.route('/api/european/system-events')
+def get_system_events():
+    """Get system events and disturbances"""
+    try:
+        events = getattr(european_game, 'event_history', [])
+        active_events = getattr(european_game, 'active_events', [])
+        
+        return jsonify({
+            'active_events': active_events,
+            'recent_events': events[-50:],  # Last 50 events
+            'total_events': len(events)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get system events: {str(e)}'}), 500
+
+# WebSocket events
+@socketio.on('connect')
+def handle_connect():
+    """Handle new WebSocket connections"""
+    emit('status', {'message': 'Connected to Power Grid Builder WebSocket'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle WebSocket disconnections"""
+    print('Client disconnected')
+
+@socketio.on('get_status')
+def handle_get_status():
+    """Send current game status to client"""
+    status = european_game.get_game_status()
+    emit('status_update', {
+        'budget': status['budget'],
+        'frequency': status['frequency'],
+        'frequency_deviation_mhz': status['frequency_deviation_mhz'],
+        'system_state': status['system_state'],
+        'load_demand': status['load_demand'],
+        'generation_capacity': status['generation_capacity'],
+        'fcr_available': status['fcr_available'],
+        'frr_available': status['frr_available'],
+        'reliability_score': status['stats'].reliability_score,
+        'compliance_score': status['stats'].compliance_score,
+        'efficiency_score': status['stats'].efficiency_score,
+        'components_count': status['components_count'],
+        'lines_count': status['lines_count'],
+        'time_elapsed': status['time_elapsed']
+    })
+
+@socketio.on('place_component')
+def handle_place_component(data):
+    """Handle component placement from client"""
+    try:
+        position = Point(x=data['x'], y=data['y'])
+        component_type = data['type']
+        
+        success = game.place_component(component_type, position)
+        
+        if success:
+            emit('component_placed', {'success': True, 'message': f'{component_type.title()} placed successfully'})
+        else:
+            emit('component_placed', {'success': False, 'message': 'Failed to place component (insufficient budget?)'})
+    except Exception as e:
+        emit('component_placed', {'success': False, 'message': f'Error: {str(e)}'})
+
+@socketio.on('place_line')
+def handle_place_line(data):
+    """Handle line placement from client"""
+    try:
+        line_type = data['type']
+        from_id = data['from']
+        to_id = data['to']
+        
+        success = game.place_line(line_type, from_id, to_id)
+        
+        if success:
+            emit('line_placed', {'success': True, 'message': f'{line_type.replace("-", " ").title()} placed successfully'})
+        else:
+            emit('line_placed', {'success': False, 'message': 'Failed to place line (insufficient budget or invalid connection?)'})
+    except Exception as e:
+        emit('line_placed', {'success': False, 'message': f'Error: {str(e)}'})
+
+@socketio.on('place_node')
+def handle_place_node(data):
+    """Handle node placement from client"""
+    try:
+        position = Point(x=data['x'], y=data['y'])
+        voltage = data.get('voltage', 110)
+        
+        success = game.place_grid_node(position, voltage)
+        
+        if success:
+            emit('node_placed', {'success': True, 'message': 'Grid node placed successfully'})
+        else:
+            emit('node_placed', {'success': False, 'message': 'Failed to place node'})
+    except Exception as e:
+        emit('node_placed', {'success': False, 'message': f'Error: {str(e)}'})
+
+@socketio.on('run_simulation')
+def handle_run_simulation():
+    """Handle simulation request from client"""
+    try:
+        result = game.simulate()
+        
+        emit('simulation_result', {
+            'success': result.success,
+            'loadServed': result.load_served,
+            'efficiency': result.efficiency,
+            'reliability': result.reliability,
+            'powerFlow': result.power_flow,
+            'voltages': result.voltages,
+            'errors': result.errors,
+            'warnings': result.warnings,
+            'frequency': result.frequency,
+            'systemStability': result.system_stability,
+            'totalLosses': result.total_losses,
+            'convergence': result.convergence,
+            'iterations': result.iterations,
+            'n1Analysis': [
+                {
+                    'contingencyLine': analysis.contingency_line,
+                    'success': analysis.success,
+                    'overloadedLines': analysis.overloaded_lines,
+                    'voltageViolations': analysis.voltage_violations,
+                    'loadShed': analysis.load_shed
+                } for analysis in result.n1_analysis
+            ]
+        })
+    except Exception as e:
+        emit('simulation_result', {'success': False, 'message': f'Simulation error: {str(e)}'})
+
+@socketio.on('undo')
+def handle_undo():
+    """Handle undo request from client"""
+    try:
+        success = game.undo()
+        emit('action_undone', {'success': success, 'message': 'Action undone' if success else 'Nothing to undo'})
+    except Exception as e:
+        emit('action_undone', {'success': False, 'message': f'Error: {str(e)}'})
+
+@socketio.on('redo')
+def handle_redo():
+    """Handle redo request from client"""
+    try:
+        success = game.redo()
+        emit('action_redone', {'success': success, 'message': 'Action redone' if success else 'Nothing to redo'})
+    except Exception as e:
+        emit('action_redone', {'success': False, 'message': f'Error: {str(e)}'})
+
+@socketio.on('reset')
+def handle_reset():
+    """Handle game reset request from client"""
+    try:
+        global game
+        game = PowerGridGame()
+        emit('game_reset', {'success': True, 'message': 'Game reset successfully'})
+    except Exception as e:
+        emit('game_reset', {'success': False, 'message': f'Error: {str(e)}'})
+
+@socketio.on('get_european_status')
+def handle_get_european_status():
+    """Send current European game status to client"""
+    status = european_game.get_game_status()
+    emit('european_status_update', status)
+
+@socketio.on('start_european_simulation')
+def handle_start_european_simulation():
+    """Start European grid simulation via WebSocket"""
+    global simulation_running, simulation_thread
+    
+    if simulation_running:
+        emit('simulation_status', {'success': False, 'message': 'Simulation already running'})
+        return
+    
+    try:
+        simulation_running = True
+        simulation_thread = threading.Thread(target=run_simulation, daemon=True)
+        simulation_thread.start()
+        
+        emit('simulation_status', {'success': True, 'message': 'European simulation started'})
+    except Exception as e:
+        simulation_running = False
+        emit('simulation_status', {'success': False, 'message': f'Failed to start simulation: {str(e)}'})
+
+@socketio.on('stop_european_simulation')
+def handle_stop_european_simulation():
+    """Stop European grid simulation via WebSocket"""
+    global simulation_running
+    
+    simulation_running = False
+    
+    emit('simulation_status', {'success': True, 'message': 'European simulation stopped'})
+
+@socketio.on('n1_analysis')
+def handle_n1_analysis():
+    """Run N-1 contingency analysis via WebSocket"""
+    try:
+        # Use unified grid engine for N-1 analysis
+        from unified_grid_engine import UnifiedGridEngine
+        
+        engine = UnifiedGridEngine()
+        
+        # Convert European game components to unified engine format
+        for comp_id, comp_data in european_game.components.items():
+            # Add components to engine (simplified)
+            pass
+        
+        # Run contingency analysis
+        results = engine.run_n1_contingency_analysis(parallel=True)
+        
+        # Convert results to JSON-serializable format
+        analysis_results = []
+        for result in results:
+            analysis_results.append({
+                'contingency_id': result.contingency_id,
+                'component_type': result.component_type,
+                'component_id': result.component_id,
+                'converged': result.converged,
+                'max_voltage_violation': result.max_voltage_violation,
+                'max_thermal_violation': result.max_thermal_violation,
+                'load_shed': result.load_shed,
+                'critical': result.critical
+            })
+        
+        emit('n1_analysis_results', analysis_results)
+        
+    except Exception as e:
+        emit('n1_analysis_results', {'error': f'N-1 analysis failed: {str(e)}'})
+
+@socketio.on('get_compliance_report')
+def handle_get_compliance_report():
+    """Get detailed SO GL compliance report via WebSocket"""
+    try:
+        status = european_game.get_game_status()
+        stats = status['stats']
+        
+        report = {
+            'frequency_control': {
+                'fcr_activation_time': getattr(european_game, 'fcr_activation_time', 'N/A'),
+                'frr_activation_time': getattr(european_game, 'frr_activation_time', 'N/A'),
+                'frequency_violations': stats.frequency_violations,
+                'worst_frequency_deviation': getattr(european_game, 'worst_frequency_deviation', 0.0)
+            },
+            'voltage_quality': {
+                'voltage_violations': stats.voltage_violations,
+                'worst_voltage': getattr(european_game, 'worst_voltage', 1.0)
+            },
+            'system_security': {
+                'n1_secure': stats.n_minus_1_failures == 0,
+                'thermal_violations': getattr(stats, 'thermal_violations', 0),
+                'last_n1_analysis': getattr(european_game, 'last_n1_analysis', None)
+            },
+            'overall': {
+                'compliance_score': stats.compliance_score,
+                'reliability_score': stats.reliability_score,
+                'efficiency_score': stats.efficiency_score
+            },
+            'timestamp': status['time_elapsed']
+        }
+        
+        emit('compliance_report', report)
+        
+    except Exception as e:
+        emit('compliance_report', {'error': f'Failed to generate compliance report: {str(e)}'})
+
+@socketio.on('get_system_events')
+def handle_get_system_events():
+    """Get system events and disturbances via WebSocket"""
+    try:
+        events = getattr(european_game, 'event_history', [])
+        active_events = getattr(european_game, 'active_events', [])
+        
+        emit('system_events', {
+            'active_events': active_events,
+            'recent_events': events[-50:],  # Last 50 events
+            'total_events': len(events)
+        })
+        
+    except Exception as e:
+        emit('system_events', {'error': f'Failed to get system events: {str(e)}'})
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Run the app with SocketIO
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)

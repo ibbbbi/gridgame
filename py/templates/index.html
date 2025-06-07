@@ -6,12 +6,14 @@
     <title>Power Grid Builder</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
 </head>
 <body>
     <div class="app-container">
         <!-- Header -->
         <header class="header">
-            <h1><i class="fas fa-bolt"></i> European Power Grid Builder</h1>
+            <h1><i class="fas fa-bolt"></i> European Power Grid Builder v2.0</h1>
             <div class="game-mode-toggle">
                 <button id="classic-mode" class="mode-btn active">Classic Mode</button>
                 <button id="european-mode" class="mode-btn">European SO GL Mode</button>
@@ -36,6 +38,18 @@
                 <div class="stat-item">
                     <i class="fas fa-shield-alt"></i>
                     <span>FCR: <span id="fcr">0</span> MW</span>
+                </div>
+                <div class="stat-item european-controls">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>State: <span id="system-state" class="system-state-normal">NORMAL</span></span>
+                </div>
+                <div class="stat-item european-controls">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Compliance: <span id="compliance-score" class="compliance-excellent">100%</span></span>
+                </div>
+                <div class="stat-item">
+                    <i class="fas fa-wifi"></i>
+                    <span>Connection: <span id="websocket-status" class="status-disconnected">Disconnected</span></span>
                 </div>
             </div>
         </header>
@@ -183,6 +197,60 @@
                     </button>
                 </div>
 
+                <!-- European Mode Advanced Controls -->
+                <div class="tool-section european-controls" style="display: none;">
+                    <h3>Advanced Controls</h3>
+                    <button class="action-btn" id="start-simulation">
+                        <i class="fas fa-play"></i>
+                        <span>Start Simulation</span>
+                    </button>
+                    <button class="action-btn" id="stop-simulation" style="display: none;">
+                        <i class="fas fa-stop"></i>
+                        <span>Stop Simulation</span>
+                    </button>
+                    <button class="action-btn" id="n1-analysis">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>N-1 Analysis</span>
+                    </button>
+                    <button class="action-btn" id="frequency-chart">
+                        <i class="fas fa-chart-line"></i>
+                        <span>Frequency Chart</span>
+                    </button>
+                    <button class="action-btn" id="performance-dashboard">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Performance Dashboard</span>
+                    </button>
+                    <button class="action-btn" id="export-data">
+                        <i class="fas fa-download"></i>
+                        <span>Export Data</span>
+                    </button>
+                </div>
+
+                <div class="tool-section european-controls" style="display: none;">
+                    <h3>Real-time Settings</h3>
+                    <div class="toggle-control">
+                        <label for="real-time-toggle">
+                            <input type="checkbox" id="real-time-toggle" checked>
+                            <span class="toggle-slider"></span>
+                            Real-time Updates
+                        </label>
+                    </div>
+                    <div class="toggle-control">
+                        <label for="compliance-toggle">
+                            <input type="checkbox" id="compliance-toggle" checked>
+                            <span class="toggle-slider"></span>
+                            Compliance Monitoring
+                        </label>
+                    </div>
+                    <div class="toggle-control">
+                        <label for="websocket-toggle">
+                            <input type="checkbox" id="websocket-toggle" checked>
+                            <span class="toggle-slider"></span>
+                            WebSocket Connection
+                        </label>
+                    </div>
+                </div>
+
                 <div class="tool-section">
                     <h3>Actions</h3>
                     <button class="action-btn" id="simulate-btn">
@@ -314,10 +382,329 @@
             </div>
         </div>
 
-        <!-- Status Messages -->
+        <!-- Enhanced European Mode Tools -->
+                <div class="tool-section european-tools">
+                    <h3>European SO GL Components</h3>
+                    <button class="tool-btn european-component" data-tool="nuclear_plant" title="Nuclear Power Plant - 1400 MW - €80,000">
+                        <i class="fas fa-atom"></i>
+                        <span>Nuclear</span>
+                        <small>1400 MW</small>
+                    </button>
+                    <button class="tool-btn european-component" data-tool="coal_plant" title="Coal Power Plant - 800 MW - €40,000">
+                        <i class="fas fa-industry"></i>
+                        <span>Coal</span>
+                        <small>800 MW</small>
+                    </button>
+                    <button class="tool-btn european-component" data-tool="gas_plant" title="Gas Power Plant - 400 MW - €25,000">
+                        <i class="fas fa-fire"></i>
+                        <span>Gas</span>
+                        <small>400 MW</small>
+                    </button>
+                    <button class="tool-btn european-component" data-tool="hydro_plant" title="Hydro Power Plant - 300 MW - €30,000">
+                        <i class="fas fa-water"></i>
+                        <span>Hydro</span>
+                        <small>300 MW</small>
+                    </button>
+                    <button class="tool-btn european-component" data-tool="wind_farm" title="Wind Farm - 200 MW - €20,000">
+                        <i class="fas fa-wind"></i>
+                        <span>Wind</span>
+                        <small>200 MW</small>
+                    </button>
+                    <button class="tool-btn european-component" data-tool="solar_farm" title="Solar Farm - 100 MW - €15,000">
+                        <i class="fas fa-solar-panel"></i>
+                        <span>Solar</span>
+                        <small>100 MW</small>
+                    </button>
+                    <hr>
+                    <button class="tool-btn european-component" data-tool="substation_400" title="400 kV Substation - €50,000">
+                        <i class="fas fa-plug"></i>
+                        <span>400kV Sub</span>
+                        <small>3000 MW</small>
+                    </button>
+                    <button class="tool-btn european-component" data-tool="substation_220" title="220 kV Substation - €25,000">
+                        <i class="fas fa-plug"></i>
+                        <span>220kV Sub</span>
+                        <small>1000 MW</small>
+                    </button>
+                    <hr>
+                    <button class="tool-btn european-component" data-tool="transmission_400" title="400 kV Transmission Line - €8,000/km">
+                        <i class="fas fa-grip-lines"></i>
+                        <span>400kV Line</span>
+                        <small>3000 MW</small>
+                    </button>
+                    <button class="tool-btn european-component" data-tool="transmission_220" title="220 kV Transmission Line - €4,000/km">
+                        <i class="fas fa-grip-lines"></i>
+                        <span>220kV Line</span>
+                        <small>1000 MW</small>
+                    </button>
+                    <button class="tool-btn european-component" data-tool="hvdc_line" title="HVDC Line - €12,000/km">
+                        <i class="fas fa-bolt"></i>
+                        <span>HVDC</span>
+                        <small>1000 MW</small>
+                    </button>
+                </div>
+
+                <!-- Enhanced European Controls -->
+                <div class="european-controls">
+                    <h3>Simulation Controls</h3>
+                    <div class="control-group">
+                        <button id="start-simulation" class="action-btn">
+                            <i class="fas fa-play"></i> Start Simulation
+                        </button>
+                        <button id="stop-simulation" class="action-btn" disabled>
+                            <i class="fas fa-stop"></i> Stop Simulation
+                        </button>
+                    </div>
+                    
+                    <div class="control-group">
+                        <button id="n1-analysis" class="action-btn">
+                            <i class="fas fa-search"></i> N-1 Analysis
+                        </button>
+                        <button id="frequency-chart" class="action-btn">
+                            <i class="fas fa-chart-line"></i> Frequency Chart
+                        </button>
+                    </div>
+                    
+                    <div class="control-group">
+                        <button id="view-compliance" class="action-btn">
+                            <i class="fas fa-clipboard-check"></i> Compliance Report
+                        </button>
+                        <button id="system-events" class="action-btn">
+                            <i class="fas fa-exclamation-circle"></i> System Events
+                        </button>
+                    </div>
+                    
+                    <div class="control-group">
+                        <button id="export-data" class="action-btn">
+                            <i class="fas fa-download"></i> Export Data
+                        </button>
+                    </div>
+                    
+                    <div class="realtime-controls">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="real-time-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Real-time Monitoring</span>
+                        
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="compliance-toggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span>Compliance Monitoring</span>
+                    </div>
+                </div>
+
+                <!-- Reserve Status Display -->
+                <div class="european-controls">
+                    <h3>Reserve Status</h3>
+                    <div class="reserve-status">
+                        <div class="reserve-item">
+                            <span>FCR Activation:</span>
+                            <span id="fcr-status" class="reserve-normal">0 MW</span>
+                        </div>
+                        <div class="reserve-item">
+                            <span>FRR Activation:</span>
+                            <span id="frr-status" class="reserve-normal">0 MW</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Log -->
+                <div class="european-controls">
+                    <h3>System Log</h3>
+                    <div id="system-log" class="system-log">
+                        <!-- Dynamic log entries will be added here -->
+                    </div>
+                </div>
+
+                <!-- Status Messages -->
         <div class="status-messages" id="status-messages"></div>
     </div>
 
+    <!-- Grid Events Overlay -->
+    <div id="grid-events-overlay" class="grid-events-overlay" style="display: none;">
+        <h4>Active Grid Events</h4>
+        <div id="active-events">
+            <!-- Dynamic events will be added here -->
+        </div>
+    </div>
+
+    <!-- Frequency Indicator -->
+    <div class="grid-frequency-indicator">
+        <div>Frequency: <span id="freq-display">50.000</span> Hz</div>
+        <div>Deviation: <span id="freq-deviation">0.0</span> mHz</div>
+    </div>
+
+    <!-- Contingency Analysis Modal -->
+    <div id="contingency-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">N-1 Contingency Analysis Results</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Analysis of system security under single component failures (N-1 criterion):</p>
+                <table class="contingency-table">
+                    <thead>
+                        <tr>
+                            <th>Contingency</th>
+                            <th>Component Type</th>
+                            <th>Converged</th>
+                            <th>Max Voltage Violation</th>
+                            <th>Max Thermal Violation</th>
+                            <th>Load Shed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dynamic results will be added here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Frequency Chart Modal -->
+    <div id="frequency-chart-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Real-time Frequency Monitoring</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <canvas id="frequency-chart-canvas" width="800" height="400"></canvas>
+                <div class="chart-info">
+                    <p><strong>European Standards:</strong></p>
+                    <ul>
+                        <li>Normal Operation: 50.000 ± 50 mHz</li>
+                        <li>Alert State: 50.000 ± 100 mHz</li>
+                        <li>Emergency State: 50.000 ± 200 mHz</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Compliance Report Modal -->
+    <div id="compliance-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">SO GL Compliance Report</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="compliance-metrics">
+                    <div class="metric-group">
+                        <h3>Frequency Control</h3>
+                        <div class="metric">
+                            <span>FCR Activation Time:</span>
+                            <span id="fcr-time">N/A</span>
+                        </div>
+                        <div class="metric">
+                            <span>FRR Activation Time:</span>
+                            <span id="frr-time">N/A</span>
+                        </div>
+                        <div class="metric">
+                            <span>Frequency Violations:</span>
+                            <span id="freq-violations">0</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-group">
+                        <h3>Voltage Quality</h3>
+                        <div class="metric">
+                            <span>Voltage Violations:</span>
+                            <span id="voltage-violations">0</span>
+                        </div>
+                        <div class="metric">
+                            <span>Worst Voltage:</span>
+                            <span id="worst-voltage">1.000 pu</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-group">
+                        <h3>System Security</h3>
+                        <div class="metric">
+                            <span>N-1 Secure:</span>
+                            <span id="n1-secure">Yes</span>
+                        </div>
+                        <div class="metric">
+                            <span>Thermal Violations:</span>
+                            <span id="thermal-violations">0</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-group">
+                        <h3>Overall Score</h3>
+                        <div class="metric large">
+                            <span>Compliance Score:</span>
+                            <span id="overall-score" class="compliance-excellent">100%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enhanced Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Enhanced JavaScript Modules -->
+    <script src="/static/js/websocket-client.js"></script>
+    <script src="/static/js/advanced-renderer.js"></script>
+    <script src="/static/js/performance-monitor.js"></script>
+    <script src="/static/js/interactive-whiteboard.js"></script>
     <script src="/static/js/app.js"></script>
+    
+    <script>
+        // Initialize modal close functionality
+        document.querySelectorAll('.modal .close').forEach(closeBtn => {
+            closeBtn.addEventListener('click', function() {
+                this.closest('.modal').style.display = 'none';
+            });
+        });
+        
+        // Close modal when clicking outside
+        window.addEventListener('click', function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        });
+        
+        // Initialize the enhanced application
+        document.addEventListener('DOMContentLoaded', () => {
+            const app = new PowerGridApp();
+            
+            // Initialize WebSocket integration
+            app.webSocketIntegration = new WebSocketIntegration(app);
+            
+            // Initialize performance monitoring
+            app.performanceMonitor = new GridPerformanceMonitor(app);
+            
+            // Initialize advanced renderer
+            app.advancedRenderer = new AdvancedGridRenderer(app.canvas, app.ctx);
+            
+            // Setup enhanced controls
+            document.getElementById('performance-dashboard')?.addEventListener('click', () => {
+                app.performanceMonitor.toggleDashboard();
+            });
+            
+            document.getElementById('websocket-toggle')?.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    app.webSocketIntegration.initialize();
+                } else {
+                    app.webSocketIntegration.cleanup();
+                }
+            });
+            
+            // Auto-connect WebSocket in European mode
+            app.canvas.addEventListener('europeanModeActivated', () => {
+                if (document.getElementById('websocket-toggle').checked) {
+                    app.webSocketIntegration.initialize();
+                }
+            });
+            
+            console.log('European Power Grid Builder v2.0 Enhanced - Ready!');
+        });
+    </script>
 </body>
 </html>

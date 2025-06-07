@@ -1,6 +1,7 @@
 /**
- * Power Grid Builder - Web Interface JavaScript
- * Interactive canvas-based grid building application
+ * European Power Grid Builder - Advanced Web Interface
+ * Interactive canvas-based grid building with SO GL compliance
+ * Version 2.0 - Enhanced European Standards Implementation
  */
 
 class PowerGridApp {
@@ -18,9 +19,29 @@ class PowerGridApp {
         this.panX = 0;
         this.panY = 0;
         
-        // European game mode
+        // Enhanced European game mode
         this.europeanMode = false;
         this.simulationRunning = false;
+        this.realTimeMode = true;
+        this.complianceMonitoring = true;
+        
+        // Advanced features
+        this.gridEvents = [];
+        this.contingencyAnalysis = false;
+        this.fcr_activation = 0;
+        this.frr_activation = 0;
+        this.systemState = 'normal';
+        this.frequencyHistory = [];
+        this.complianceScore = 100;
+        
+        // Performance monitoring
+        this.lastUpdateTime = Date.now();
+        this.frameRate = 60;
+        
+        // Enhanced modules (initialized later)
+        this.webSocketIntegration = null;
+        this.performanceMonitor = null;
+        this.advancedRenderer = null;
         
         this.init();
     }
@@ -31,11 +52,24 @@ class PowerGridApp {
         this.loadGameData();
         this.draw();
         
-        // Update game status every second
-        setInterval(() => this.updateGameStatus(), 1000);
+        // Initialize advanced modules
+        this.initializeAdvancedModules();
         
-        // Initialize European mode controls
+        // Enhanced update intervals
+        setInterval(() => this.updateGameStatus(), 1000);
+        setInterval(() => this.updateRealTimeData(), 100); // High-frequency updates
+        
+        // Initialize enhanced European mode controls
         this.setupEuropeanModeControls();
+        this.initializeComplianceMonitoring();
+        this.startPerformanceMonitoring();
+        
+        // Auto-save functionality
+        setInterval(() => this.autoSave(), 30000);
+        
+        // Initialize interactive whiteboard
+        this.whiteboard = null;
+        this.initializeWhiteboard();
     }
     
     setupEventListeners() {
@@ -85,18 +119,306 @@ class PowerGridApp {
             this.switchToEuropeanMode();
         });
         
-        // European simulation controls
-        document.getElementById('start-simulation').addEventListener('click', () => {
+        // Enhanced European simulation controls
+        document.getElementById('start-simulation')?.addEventListener('click', () => {
             this.startEuropeanSimulation();
         });
         
-        document.getElementById('stop-simulation').addEventListener('click', () => {
+        document.getElementById('stop-simulation')?.addEventListener('click', () => {
             this.stopEuropeanSimulation();
         });
         
-        document.getElementById('view-compliance').addEventListener('click', () => {
+        document.getElementById('view-compliance')?.addEventListener('click', () => {
             this.showComplianceReport();
         });
+        
+        // New advanced controls
+        document.getElementById('n1-analysis')?.addEventListener('click', () => {
+            this.runContingencyAnalysis();
+        });
+        
+        document.getElementById('frequency-chart')?.addEventListener('click', () => {
+            this.showFrequencyChart();
+        });
+        
+        document.getElementById('system-events')?.addEventListener('click', () => {
+            this.showSystemEvents();
+        });
+        
+        document.getElementById('export-data')?.addEventListener('click', () => {
+            this.exportSimulationData();
+        });
+        
+        // Real-time controls
+        document.getElementById('real-time-toggle')?.addEventListener('change', (e) => {
+            this.realTimeMode = e.target.checked;
+        });
+        
+        document.getElementById('compliance-toggle')?.addEventListener('change', (e) => {
+            this.complianceMonitoring = e.target.checked;
+        });
+    }
+    
+    switchToEuropeanMode() {
+        this.europeanMode = true;
+        document.getElementById('classic-mode').classList.remove('active');
+        document.getElementById('european-mode').classList.add('active');
+        
+        // Show European-specific controls
+        document.querySelectorAll('.european-controls').forEach(el => {
+            el.style.display = 'block';
+        });
+        
+        document.querySelectorAll('.classic-tools').forEach(el => {
+            el.style.display = 'none';
+        });
+        
+        document.querySelectorAll('.european-tools').forEach(el => {
+            el.style.display = 'block';
+        });
+        
+        // Load European component library
+        this.loadEuropeanComponents();
+        
+        // Enable real-time monitoring
+        this.initializeComplianceMonitoring();
+        
+        console.log('Switched to European SO GL Mode');
+    }
+    
+    switchToClassicMode() {
+        this.europeanMode = false;
+        this.simulationRunning = false;
+        
+        document.getElementById('european-mode').classList.remove('active');
+        document.getElementById('classic-mode').classList.add('active');
+        
+        // Hide European-specific controls
+        document.querySelectorAll('.european-controls').forEach(el => {
+            el.style.display = 'none';
+        });
+        
+        document.querySelectorAll('.european-tools').forEach(el => {
+            el.style.display = 'none';
+        });
+        
+        document.querySelectorAll('.classic-tools').forEach(el => {
+            el.style.display = 'block';
+        });
+        
+        console.log('Switched to Classic Mode');
+    }
+    
+    loadEuropeanComponents() {
+        // Load European-specific component specifications
+        fetch('/api/european/components')
+            .then(response => response.json())
+            .then(components => {
+                this.europeanComponents = components;
+                this.updateEuropeanToolbar();
+            })
+            .catch(error => console.error('Failed to load European components:', error));
+    }
+    
+    updateEuropeanToolbar() {
+        const toolbar = document.querySelector('.european-tools');
+        if (!toolbar || !this.europeanComponents) return;
+        
+        // Clear existing buttons
+        toolbar.innerHTML = '<h3>European SO GL Components</h3>';
+        
+        Object.entries(this.europeanComponents).forEach(([key, component]) => {
+            const button = document.createElement('button');
+            button.className = 'tool-btn european-component';
+            button.dataset.tool = key;
+            button.title = `${component.description} - ${component.capacity} MW - €${component.cost.toLocaleString()}`;
+            button.innerHTML = `
+                <i class="fas ${this.getComponentIcon(key)}"></i>
+                <span>${component.description.split(' ')[0]}</span>
+                <small>${component.capacity} MW</small>
+            `;
+            
+            button.addEventListener('click', () => this.selectTool(key));
+            toolbar.appendChild(button);
+        });
+    }
+    
+    getComponentIcon(componentType) {
+        const icons = {
+            'nuclear_plant': 'fa-atom',
+            'coal_plant': 'fa-industry',
+            'gas_plant': 'fa-fire',
+            'hydro_plant': 'fa-water',
+            'wind_farm': 'fa-wind',
+            'solar_farm': 'fa-solar-panel',
+            'substation_400': 'fa-plug',
+            'substation_220': 'fa-plug',
+            'transmission_400': 'fa-grip-lines',
+            'transmission_220': 'fa-grip-lines',
+            'hvdc_line': 'fa-bolt'
+        };
+        
+        return icons[componentType] || 'fa-cog';
+    }
+    
+    startEuropeanSimulation() {
+        if (this.simulationRunning) return;
+        
+        fetch('/api/european/start-simulation', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.simulationRunning = true;
+                    this.updateSimulationControls();
+                    console.log('European simulation started');
+                } else {
+                    alert('Failed to start simulation: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Simulation start failed:', error);
+                alert('Failed to start simulation');
+            });
+    }
+    
+    stopEuropeanSimulation() {
+        if (!this.simulationRunning) return;
+        
+        fetch('/api/european/stop-simulation', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                this.simulationRunning = false;
+                this.updateSimulationControls();
+                console.log('European simulation stopped');
+            })
+            .catch(error => {
+                console.error('Simulation stop failed:', error);
+            });
+    }
+    
+    updateSimulationControls() {
+        const startBtn = document.getElementById('start-simulation');
+        const stopBtn = document.getElementById('stop-simulation');
+        
+        if (startBtn) startBtn.disabled = this.simulationRunning;
+        if (stopBtn) stopBtn.disabled = !this.simulationRunning;
+    }
+    
+    runContingencyAnalysis() {
+        if (!this.europeanMode) return;
+        
+        this.contingencyAnalysis = true;
+        
+        fetch('/api/european/n1-analysis', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                this.showContingencyResults(data);
+                this.contingencyAnalysis = false;
+            })
+            .catch(error => {
+                console.error('N-1 analysis failed:', error);
+                this.contingencyAnalysis = false;
+            });
+    }
+    
+    showContingencyResults(results) {
+        const modal = document.getElementById('contingency-modal');
+        if (!modal) return;
+        
+        const tbody = modal.querySelector('tbody');
+        tbody.innerHTML = '';
+        
+        results.forEach(result => {
+            const row = document.createElement('tr');
+            row.className = result.critical ? 'critical' : 'normal';
+            row.innerHTML = `
+                <td>${result.contingency_id}</td>
+                <td>${result.component_type}</td>
+                <td>${result.converged ? 'Yes' : 'No'}</td>
+                <td>${result.max_voltage_violation.toFixed(3)}</td>
+                <td>${result.max_thermal_violation.toFixed(1)}%</td>
+                <td>${Math.round(result.load_shed)} MW</td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        modal.style.display = 'block';
+    }
+    
+    showFrequencyChart() {
+        if (!this.frequencyHistory.length) {
+            alert('No frequency data available');
+            return;
+        }
+        
+        // Create frequency chart using Chart.js
+        const modal = document.getElementById('frequency-chart-modal');
+        if (!modal) return;
+        
+        const ctx = modal.querySelector('#frequency-chart-canvas');
+        
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: this.frequencyHistory.map(point => 
+                    new Date(point.timestamp).toLocaleTimeString()
+                ),
+                datasets: [{
+                    label: 'Frequency (Hz)',
+                    data: this.frequencyHistory.map(point => point.frequency),
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }, {
+                    label: 'Deviation (mHz)',
+                    data: this.frequencyHistory.map(point => point.deviation),
+                    borderColor: 'rgb(255, 99, 132)',
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 49.8,
+                        max: 50.2
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    }
+                }
+            }
+        });
+        
+        modal.style.display = 'block';
+    }
+    
+    exportSimulationData() {
+        const data = {
+            frequencyHistory: this.frequencyHistory,
+            complianceMetrics: this.complianceMetrics,
+            gridEvents: this.gridEvents,
+            systemState: this.systemState,
+            components: this.components,
+            timestamp: new Date().toISOString()
+        };
+        
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `european-grid-simulation-${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+        URL.revokeObjectURL(url);
     }
     
     selectTool(tool) {
@@ -542,6 +864,553 @@ class PowerGridApp {
         }
     }
 
+    initializeComplianceMonitoring() {
+        this.complianceMetrics = {
+            frequencyDeviations: [],
+            voltageViolations: 0,
+            n1Violations: 0,
+            fcrResponse: [],
+            frrResponse: [],
+            reserveShortfalls: 0
+        };
+        
+        this.europeanStandards = {
+            frequency: {
+                normal: { min: 49.95, max: 50.05 },
+                alert: { min: 49.90, max: 50.10 },
+                emergency: { min: 49.80, max: 50.20 }
+            },
+            voltage: {
+                hv400: { min: 0.90, max: 1.05 },
+                hv220: { min: 0.90, max: 1.10 },
+                hv110: { min: 0.90, max: 1.10 }
+            },
+            reserves: {
+                fcr: 3000, // MW total for Continental Europe
+                frr: 1500  // MW per area
+            }
+        };
+    }
+    
+    startPerformanceMonitoring() {
+        this.performanceMonitor = {
+            frameCount: 0,
+            lastFrameTime: Date.now(),
+            averageFrameTime: 16.67, // 60 FPS target
+            memoryUsage: 0
+        };
+    }
+    
+    initializeAdvancedModules() {
+        // Initialize Advanced Renderer
+        if (window.AdvancedGridRenderer) {
+            this.advancedRenderer = new window.AdvancedGridRenderer(this.canvas, this.ctx);
+            console.log('Advanced Grid Renderer initialized');
+        }
+        
+        // Initialize Performance Monitor
+        if (window.PerformanceMonitor) {
+            this.performanceMonitor = new window.PerformanceMonitor(this);
+            console.log('Performance Monitor initialized');
+        }
+        
+        // Initialize WebSocket Integration
+        if (window.WebSocketIntegration) {
+            this.webSocketIntegration = new window.WebSocketIntegration(this);
+            console.log('WebSocket Integration initialized');
+        }
+    }
+    
+    updateRealTimeData() {
+        if (!this.europeanMode || !this.simulationRunning) return;
+        
+        // Fetch real-time simulation data
+        fetch('/api/european/realtime')
+            .then(response => response.json())
+            .then(data => {
+                this.updateFrequencyMonitoring(data);
+                this.updateReserveStatus(data);
+                this.updateComplianceScore(data);
+                this.updateGridEvents(data);
+            })
+            .catch(error => console.warn('Real-time update failed:', error));
+    }
+    
+    updateFrequencyMonitoring(data) {
+        const frequency = data.frequency || 50.0;
+        const deviation = (frequency - 50.0) * 1000; // mHz
+        
+        this.frequencyHistory.push({
+            timestamp: Date.now(),
+            frequency: frequency,
+            deviation: deviation
+        });
+        
+        // Keep only last 300 points (5 minutes at 1 Hz)
+        if (this.frequencyHistory.length > 300) {
+            this.frequencyHistory.shift();
+        }
+        
+        // Update frequency display with precision
+        document.getElementById('frequency').textContent = frequency.toFixed(3);
+        
+        // Update system state based on frequency
+        this.updateSystemState(deviation);
+    }
+    
+    updateSystemState(deviationMHz) {
+        let newState = 'normal';
+        
+        if (Math.abs(deviationMHz) > 200) {
+            newState = 'emergency';
+        } else if (Math.abs(deviationMHz) > 100) {
+            newState = 'alert';
+        }
+        
+        if (newState !== this.systemState) {
+            this.systemState = newState;
+            this.updateSystemStateDisplay();
+            this.logSystemStateChange(newState);
+        }
+    }
+    
+    updateSystemStateDisplay() {
+        const indicator = document.getElementById('system-state');
+        if (indicator) {
+            indicator.textContent = this.systemState.toUpperCase();
+            indicator.className = `system-state-${this.systemState}`;
+        }
+    }
+    
+    updateReserveStatus(data) {
+        this.fcr_activation = data.fcr_activation || 0;
+        this.frr_activation = data.frr_activation || 0;
+        
+        document.getElementById('fcr').textContent = Math.round(data.fcr_available || 0);
+        
+        // Update reserve indicators
+        const fcrIndicator = document.getElementById('fcr-status');
+        const frrIndicator = document.getElementById('frr-status');
+        
+        if (fcrIndicator) {
+            fcrIndicator.textContent = `${Math.round(this.fcr_activation)} MW`;
+            fcrIndicator.className = this.fcr_activation > 0 ? 'reserve-active' : 'reserve-normal';
+        }
+        
+        if (frrIndicator) {
+            frrIndicator.textContent = `${Math.round(this.frr_activation)} MW`;
+            frrIndicator.className = this.frr_activation > 0 ? 'reserve-active' : 'reserve-normal';
+        }
+    }
+    
+    updateComplianceScore(data) {
+        this.complianceScore = data.compliance_score || 100;
+        
+        const scoreElement = document.getElementById('compliance-score');
+        if (scoreElement) {
+            scoreElement.textContent = `${Math.round(this.complianceScore)}%`;
+            scoreElement.className = this.getComplianceClass(this.complianceScore);
+        }
+    }
+    
+    getComplianceClass(score) {
+        if (score >= 95) return 'compliance-excellent';
+        if (score >= 85) return 'compliance-good';
+        if (score >= 70) return 'compliance-warning';
+        return 'compliance-critical';
+    }
+    
+    updateGridEvents(data) {
+        if (data.active_events) {
+            this.gridEvents = data.active_events;
+            this.updateEventDisplay();
+        }
+    }
+    
+    updateEventDisplay() {
+        const eventsList = document.getElementById('active-events');
+        if (!eventsList) return;
+        
+        eventsList.innerHTML = '';
+        
+        this.gridEvents.forEach(event => {
+            const eventElement = document.createElement('div');
+            eventElement.className = `grid-event event-${event.type}`;
+            eventElement.innerHTML = `
+                <div class="event-header">
+                    <span class="event-type">${event.type.replace('_', ' ').toUpperCase()}</span>
+                    <span class="event-magnitude">${Math.round(event.magnitude)} MW</span>
+                </div>
+                <div class="event-description">${event.description}</div>
+                <div class="event-time">Duration: ${Math.round(event.duration)}s</div>
+            `;
+            eventsList.appendChild(eventElement);
+        });
+    }
+    
+    logSystemStateChange(newState) {
+        console.log(`System state changed to: ${newState} at ${new Date().toISOString()}`);
+        
+        // Add to system log
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            type: 'system_state_change',
+            message: `System state: ${newState}`,
+            severity: newState === 'emergency' ? 'critical' : 
+                     newState === 'alert' ? 'warning' : 'info'
+        };
+        
+        this.addToSystemLog(logEntry);
+    }
+    
+    addToSystemLog(entry) {
+        const logContainer = document.getElementById('system-log');
+        if (!logContainer) return;
+        
+        const logElement = document.createElement('div');
+        logElement.className = `log-entry log-${entry.severity}`;
+        logElement.innerHTML = `
+            <span class="log-time">${new Date(entry.timestamp).toLocaleTimeString()}</span>
+            <span class="log-message">${entry.message}</span>
+        `;
+        
+        logContainer.appendChild(logElement);
+        
+        // Keep only last 50 entries
+        while (logContainer.children.length > 50) {
+            logContainer.removeChild(logContainer.firstChild);
+        }
+        
+        // Auto-scroll to bottom
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    autoSave() {
+        if (!this.europeanMode) return;
+        
+        const gameState = {
+            components: this.components,
+            lines: this.lines,
+            nodes: this.nodes,
+            budget: this.budget,
+            timestamp: Date.now()
+        };
+        
+        localStorage.setItem('europeanGridGameState', JSON.stringify(gameState));
+    }
+    
+    loadAutoSave() {
+        const savedState = localStorage.getItem('europeanGridGameState');
+        if (!savedState) return false;
+        
+        try {
+            const gameState = JSON.parse(savedState);
+            this.components = gameState.components || [];
+            this.lines = gameState.lines || [];
+            this.nodes = gameState.nodes || [];
+            this.budget = gameState.budget || 500000;
+            
+            console.log('Auto-save loaded successfully');
+            return true;
+        } catch (error) {
+            console.error('Failed to load auto-save:', error);
+            return false;
+        }
+    }
+
+    // Interactive Whiteboard Integration
+    initializeWhiteboard() {
+        try {
+            if (typeof InteractiveWhiteboard !== 'undefined') {
+                this.whiteboard = new InteractiveWhiteboard('grid-canvas');
+                console.log('Interactive Whiteboard initialized successfully');
+                
+                // Set up integration callbacks
+                this.setupWhiteboardIntegration();
+            } else {
+                console.warn('InteractiveWhiteboard class not available');
+            }
+        } catch (error) {
+            console.error('Failed to initialize Interactive Whiteboard:', error);
+        }
+    }
+    
+    setupWhiteboardIntegration() {
+        if (!this.whiteboard) return;
+        
+        // Override canvas resize to work with whiteboard
+        const originalResizeCanvas = this.resizeCanvas.bind(this);
+        this.resizeCanvas = () => {
+            originalResizeCanvas();
+            if (this.whiteboard) {
+                this.whiteboard.handleResize();
+            }
+        };
+        
+        // Add whiteboard export functionality
+        this.addWhiteboardExportFeatures();
+        
+        // Sync whiteboard mode with app state
+        this.syncWhiteboardState();
+    }
+    
+    addWhiteboardExportFeatures() {
+        // Add export to grid button
+        const exportBtn = document.createElement('button');
+        exportBtn.id = 'export-whiteboard-to-grid';
+        exportBtn.className = 'btn btn-secondary';
+        exportBtn.innerHTML = '<i class="fas fa-download"></i> Import from Whiteboard';
+        exportBtn.title = 'Import whiteboard design as grid components';
+        exportBtn.style.display = 'none';
+        
+        exportBtn.addEventListener('click', () => this.importFromWhiteboard());
+        
+        // Add to control panel
+        const controlPanel = document.querySelector('.controls');
+        if (controlPanel) {
+            controlPanel.appendChild(exportBtn);
+        }
+        
+        // Add export current grid to whiteboard button
+        const importBtn = document.createElement('button');
+        importBtn.id = 'import-grid-to-whiteboard';
+        importBtn.className = 'btn btn-secondary';
+        importBtn.innerHTML = '<i class="fas fa-upload"></i> Export to Whiteboard';
+        importBtn.title = 'Export current grid to whiteboard for editing';
+        
+        importBtn.addEventListener('click', () => this.exportToWhiteboard());
+        
+        if (controlPanel) {
+            controlPanel.appendChild(importBtn);
+        }
+        
+        // Show/hide buttons based on whiteboard mode
+        this.updateWhiteboardButtons();
+    }
+    
+    syncWhiteboardState() {
+        // Listen for whiteboard mode changes
+        const whiteboardToggle = document.getElementById('whiteboard-toggle');
+        if (whiteboardToggle) {
+            const originalToggle = this.whiteboard.toggleWhiteboardMode.bind(this.whiteboard);
+            this.whiteboard.toggleWhiteboardMode = () => {
+                originalToggle();
+                this.updateWhiteboardButtons();
+                
+                // Sync with main app state
+                if (this.whiteboard.whiteboardMode) {
+                    this.currentTool = null;
+                    this.selectTool(null);
+                }
+            };
+        }
+    }
+    
+    updateWhiteboardButtons() {
+        const exportBtn = document.getElementById('export-whiteboard-to-grid');
+        const importBtn = document.getElementById('import-grid-to-whiteboard');
+        
+        if (this.whiteboard && this.whiteboard.whiteboardMode) {
+            if (exportBtn) exportBtn.style.display = 'inline-block';
+            if (importBtn) importBtn.style.display = 'none';
+        } else {
+            if (exportBtn) exportBtn.style.display = 'none';
+            if (importBtn) importBtn.style.display = 'inline-block';
+        }
+    }
+    
+    async importFromWhiteboard() {
+        if (!this.whiteboard) {
+            this.showMessage('Whiteboard not available', 'error');
+            return;
+        }
+        
+        try {
+            const whiteboardComponents = this.whiteboard.exportToGrid();
+            
+            if (whiteboardComponents.length === 0) {
+                this.showMessage('No components found in whiteboard to import', 'warning');
+                return;
+            }
+            
+            // Convert whiteboard components to grid components
+            const gridComponents = whiteboardComponents.map(comp => {
+                return {
+                    type: this.mapWhiteboardToGridType(comp.type),
+                    x: Math.round(comp.x),
+                    y: Math.round(comp.y),
+                    properties: comp.properties || {}
+                };
+            });
+            
+            // Add components to the grid
+            for (const comp of gridComponents) {
+                await this.addComponentFromWhiteboard(comp);
+            }
+            
+            this.showMessage(`Imported ${gridComponents.length} components from whiteboard`, 'success');
+            this.loadGameData();
+            this.draw();
+            
+        } catch (error) {
+            this.showMessage('Error importing from whiteboard: ' + error.message, 'error');
+        }
+    }
+    
+    mapWhiteboardToGridType(whiteboardType) {
+        const typeMap = {
+            'generator': 'generator',
+            'substation': 'substation', 
+            'load': 'load',
+            'transmission': 'transmission_line',
+            'transformer': 'transformer'
+        };
+        
+        return typeMap[whiteboardType] || 'generator';
+    }
+    
+    async addComponentFromWhiteboard(component) {
+        try {
+            const response = await fetch('/api/components', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: component.type,
+                    x: component.x,
+                    y: component.y,
+                    properties: component.properties
+                })
+            });
+            
+            const result = await response.json();
+            if (!result.success) {
+                console.warn(`Failed to add component: ${result.message}`);
+            }
+        } catch (error) {
+            console.error('Error adding component from whiteboard:', error);
+        }
+    }
+    
+    exportToWhiteboard() {
+        if (!this.whiteboard) {
+            this.showMessage('Whiteboard not available', 'error');
+            return;
+        }
+        
+        try {
+            // Convert current grid components to whiteboard format
+            const whiteboardComponents = this.components.map(comp => {
+                return {
+                    type: this.mapGridToWhiteboardType(comp.type),
+                    x: comp.x,
+                    y: comp.y,
+                    properties: comp.properties || {}
+                };
+            });
+            
+            // Import to whiteboard
+            this.whiteboard.importFromGrid(whiteboardComponents);
+            
+            // Switch to whiteboard mode
+            if (!this.whiteboard.whiteboardMode) {
+                this.whiteboard.toggleWhiteboardMode();
+            }
+            
+            this.showMessage(`Exported ${whiteboardComponents.length} components to whiteboard`, 'success');
+            
+        } catch (error) {
+            this.showMessage('Error exporting to whiteboard: ' + error.message, 'error');
+        }
+    }
+    
+    mapGridToWhiteboardType(gridType) {
+        const typeMap = {
+            'generator': 'generator',
+            'nuclear_plant': 'generator',
+            'coal_plant': 'generator',
+            'gas_plant': 'generator',
+            'hydro_plant': 'generator',
+            'wind_farm': 'generator',
+            'solar_farm': 'generator',
+            'substation': 'substation',
+            'load': 'load',
+            'industrial_load': 'load',
+            'transmission_line': 'transmission',
+            'transformer': 'transformer'
+        };
+        
+        return typeMap[gridType] || 'generator';
+    }
+
+    // Enhanced mobile touch support for whiteboard integration
+    handleMobileWhiteboardInteraction() {
+        if (!this.whiteboard || !this.whiteboard.whiteboardMode) return;
+        
+        // Add mobile-specific gesture handlers
+        let lastTap = 0;
+        
+        this.canvas.addEventListener('touchstart', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTap;
+            
+            if (tapLength < 500 && tapLength > 0) {
+                // Double tap detected
+                e.preventDefault();
+                this.handleDoubleTapWhiteboard(e);
+            }
+            
+            lastTap = currentTime;
+        });
+    }
+    
+    handleDoubleTapWhiteboard(e) {
+        if (!this.whiteboard) return;
+        
+        // Double tap to center/reset view
+        this.whiteboard.transform.translateX = 0;
+        this.whiteboard.transform.translateY = 0;
+        this.whiteboard.transform.scale = 1;
+        this.whiteboard.redraw();
+        
+        // Show feedback
+        this.showTouchFeedback(e.touches[0]);
+    }
+    
+    showTouchFeedback(touch) {
+        const feedback = document.createElement('div');
+        feedback.className = 'touch-feedback';
+        feedback.style.left = touch.clientX + 'px';
+        feedback.style.top = touch.clientY + 'px';
+        
+        document.body.appendChild(feedback);
+        
+        setTimeout(() => {
+            if (feedback.parentNode) {
+                feedback.parentNode.removeChild(feedback);
+            }
+        }, 600);
+    }
+
+    // Enhanced whiteboard-specific drawing optimization
+    optimizeWhiteboardRendering() {
+        if (!this.whiteboard) return;
+        
+        // Use requestAnimationFrame for smooth drawing
+        let animationId;
+        const optimizedRedraw = () => {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            
+            animationId = requestAnimationFrame(() => {
+                this.whiteboard.redraw();
+            });
+        };
+        
+        // Replace whiteboard redraw with optimized version
+        this.whiteboard.redraw = optimizedRedraw;
+    }
+
     draw() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
@@ -550,20 +1419,24 @@ class PowerGridApp {
         this.ctx.translate(this.panX, this.panY);
         this.ctx.scale(this.zoom, this.zoom);
         
-        // Draw grid
-        this.drawGrid();
-        
-        // Draw lines first (so they appear behind components)
-        this.drawLines();
-        
-        // Draw components
-        this.drawComponents();
-        
-        // Draw nodes
-        this.drawNodes();
-        
-        // Draw connection preview
-        this.drawConnectionPreview();
+        // Use advanced renderer if available and in European mode
+        if (this.advancedRenderer && this.europeanMode) {
+            this.advancedRenderer.render(this.components, this.lines, this.nodes, {
+                zoom: this.zoom,
+                panX: this.panX,
+                panY: this.panY,
+                selectedComponent: this.selectedComponent,
+                connectionStart: this.connectionStart,
+                currentTool: this.currentTool
+            });
+        } else {
+            // Fallback to basic rendering
+            this.drawGrid();
+            this.drawLines();
+            this.drawComponents();
+            this.drawNodes();
+            this.drawConnectionPreview();
+        }
         
         this.ctx.restore();
     }
