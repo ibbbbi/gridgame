@@ -184,10 +184,4 @@ contains
         ! Net power imbalance after FCR
         net_imbalance = power_imbalance + fcr_response
         
-        ! Update frequency using swing equation
-        frequency_rate = net_imbalance / (2.0_dp * system_inertia * frequency)
-        frequency = frequency + frequency_rate * dt
-        
-    end subroutine simulate_frequency_dynamics
-
-end module frequency_control
+        ! Update frequency

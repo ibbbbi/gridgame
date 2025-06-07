@@ -14,10 +14,10 @@ contains
         implicit none
         integer, intent(in) :: n_generators
         real(dp), intent(in) :: capacities(n_generators)      ! MW
-        real(dp), intent(in) :: marginal_costs(n_generators)  ! €/MWh
+        real(dp), intent(in) :: marginal_costs(n_generators)  ! EUR/MWh
         real(dp), intent(in) :: demand                        ! MW
         real(dp), intent(out) :: generation_schedule(n_generators) ! MW
-        real(dp), intent(out) :: total_cost                   ! €/h
+        real(dp), intent(out) :: total_cost                   ! EUR/h
         
         integer :: i, j, min_index
         real(dp) :: remaining_demand, temp_cost, temp_capacity
@@ -87,10 +87,10 @@ contains
         integer, intent(in) :: n_lines
         real(dp), intent(in) :: line_lengths(n_lines)      ! km
         real(dp), intent(in) :: power_flows(n_lines)       ! MW
-        real(dp), intent(in) :: base_costs(n_lines)        ! €/km base cost
-        real(dp), intent(in) :: capacity_costs(n_lines)    ! €/km/MW capacity cost
+        real(dp), intent(in) :: base_costs(n_lines)        ! EUR/km base cost
+        real(dp), intent(in) :: capacity_costs(n_lines)    ! EUR/km/MW capacity cost
         real(dp), intent(out) :: optimal_capacities(n_lines) ! MW
-        real(dp), intent(out) :: total_investment          ! €
+        real(dp), intent(out) :: total_investment          ! EUR
         
         integer :: i
         real(dp), parameter :: SAFETY_MARGIN = 1.2_dp  ! 20% margin
@@ -122,13 +122,13 @@ contains
         real(dp), intent(in) :: required_frr                       ! MW required FRR
         real(dp), intent(out) :: fcr_allocation(n_generators)       ! MW FCR allocated
         real(dp), intent(out) :: frr_allocation(n_generators)       ! MW FRR allocated
-        real(dp), intent(out) :: reserve_cost                      ! €/h
+        real(dp), intent(out) :: reserve_cost                      ! EUR/h
         
         integer :: i
         real(dp) :: total_fcr_available, total_frr_available
         real(dp) :: fcr_factor, frr_factor
-        real(dp), parameter :: FCR_COST = 10.0_dp    ! €/MW/h
-        real(dp), parameter :: FRR_COST = 5.0_dp     ! €/MW/h
+        real(dp), parameter :: FCR_COST = 10.0_dp    ! EUR/MW/h
+        real(dp), parameter :: FRR_COST = 5.0_dp     ! EUR/MW/h
         
         ! Calculate total available reserves
         total_fcr_available = sum(fcr_capabilities)
@@ -230,12 +230,12 @@ contains
         real(dp), intent(in) :: generation_schedule(n_generators)  ! MW
         real(dp), intent(in) :: emission_factors(n_generators)     ! kg CO2/MWh
         real(dp), intent(out) :: total_emissions                   ! kg CO2/h
-        real(dp), intent(out) :: carbon_cost                       ! €/h
+        real(dp), intent(out) :: carbon_cost                       ! EUR/h
         real(dp), intent(out) :: green_ratio                       ! 0-1 renewable ratio
         
         integer :: i
         real(dp) :: total_generation, renewable_generation
-        real(dp), parameter :: CARBON_PRICE = 85.0_dp  ! €/tonne CO2 (EU ETS price)
+        real(dp), parameter :: CARBON_PRICE = 85.0_dp  ! EUR/tonne CO2 (EU ETS price)
         
         total_emissions = 0.0_dp
         total_generation = 0.0_dp
