@@ -56,6 +56,14 @@ class EuropeanGridGame:
         self.fcr_available = 0.0  # Available FCR in MW
         self.frr_available = 0.0  # Available FRR in MW
         
+        # U/Q Control and Blackstart state
+        self.voltage_control_active = False
+        self.blackstart_scenario_active = False
+        self.voltage_violations = {}
+        self.blackstart_capability_status = None
+        self.restoration_sequence = []
+        self.current_restoration_phase = 0
+        
         # European grid events based on real scenarios
         self.grid_events = [
             GridEvent(
@@ -405,3 +413,270 @@ Grid Statistics:
 Budget: €{status['budget']:,.0f} / €500,000
 Components: {status['components_count']} | Lines: {status['lines_count']}
 """
+    def enable_voltage_control(self, component_id: str, voltage_setpoint: float = 1.0) -> bool:
+        """Enable voltage control for a generator component"""
+        if component_id not in self.components:
+            return False
+            
+        component = self.components[component_id]
+        if component['capacity'] <= 0:  # Only generators can control voltage
+            return False
+            
+        # Enable voltage control
+        component['voltage_control_enabled'] = True
+        component['voltage_setpoint'] = voltage_setpoint
+        component['avr_enabled'] = True
+        
+        self.voltage_control_active = True
+        return True
+    
+    def configure_blackstart_capability(self, component_id: str, blackstart_capable: bool = True) -> bool:
+        """Configure blackstart capability for a generator"""
+        if component_id not in self.components:
+            return False
+            
+        component = self.components[component_id]
+        if component['capacity'] <= 0:  # Only generators can be blackstart units
+            return False
+            
+        component['blackstart_capable'] = blackstart_capable
+        if blackstart_capable:
+            # Set appropriate blackstart time based on generator type
+            component['blackstart_time'] = self._get_blackstart_time(component.get('type', 'unknown'))
+            component['restoration_priority'] = 1  # High priority for blackstart units
+        
+        return True
+    
+    def _get_blackstart_time(self, generator_type: str) -> float:
+        """Get blackstart time in minutes based on generator type"""
+        blackstart_times = {
+            'hydro_plant': 5.0,   # Hydro can start very quickly
+            'gas_plant': 10.0,    # Gas turbines start relatively fast
+            'coal_plant': 30.0,   # Coal plants need longer startup
+            'nuclear_plant': 60.0, # Nuclear requires extensive checks
+            'wind_farm': 2.0,     # Wind can start if wind available
+            'solar_farm': 1.0     # Solar can start if sun available
+        }
+        return blackstart_times.get(generator_type, 15.0)
+    
+    def assess_blackstart_capability(self) -> Dict:
+        """Assess current blackstart capability of the grid"""
+        blackstart_units = []
+        total_blackstart_capacity = 0.0
+        total_demand = 0.0
+        
+        for comp_id, component in self.components.items():
+            if component.get('blackstart_capable', False):
+                blackstart_units.append({
+                    'id': comp_id,
+                    'capacity': component['capacity'],
+                    'type': component.get('type', 'unknown'),
+                    'start_time': component.get('blackstart_time', 15.0)
+                })
+                total_blackstart_capacity += component['capacity']
+            
+            if component['capacity'] < 0:  # Loads have negative capacity
+                total_demand += abs(component['capacity'])
+        
+        blackstart_percentage = (total_blackstart_capacity / total_demand) if total_demand > 0 else 0.0
+        meets_standard = blackstart_percentage >= self.standards.blackstart.minimum_blackstart_capability
+        
+        self.blackstart_capability_status = {
+            'blackstart_units': blackstart_units,
+            'total_blackstart_capacity': total_blackstart_capacity,
+            'total_demand': total_demand,
+            'blackstart_percentage': blackstart_percentage,
+            'meets_european_standard': meets_standard,
+            'required_percentage': self.standards.blackstart.minimum_blackstart_capability * 100
+        }
+        
+        return self.blackstart_capability_status
+    
+    def initiate_blackstart_scenario(self) -> bool:
+        """Initiate a blackstart scenario for training purposes"""
+        if not self.blackstart_capability_status:
+            self.assess_blackstart_capability()
+            
+        if not self.blackstart_capability_status['meets_european_standard']:
+            return False
+            
+        # Simulate complete blackout
+        self.blackstart_scenario_active = True
+        self.current_restoration_phase = 0
+        
+        # Generate restoration sequence
+        self.restoration_sequence = self._generate_restoration_sequence()
+        
+        # Shut down all components (simulate blackout)
+        for component in self.components.values():
+            component['is_active'] = False
+            component['current_output'] = 0.0
+        
+        return True
+    
+    def _generate_restoration_sequence(self) -> List[Dict]:
+        """Generate optimal restoration sequence"""
+        sequence = []
+        
+        # Get blackstart units first
+        blackstart_units = [
+            (comp_id, component) for comp_id, component in self.components.items()
+            if component.get('blackstart_capable', False) and component['capacity'] > 0
+        ]
+        
+        # Sort by priority: hydro > gas > coal > nuclear
+        priority_order = {'hydro_plant': 1, 'gas_plant': 2, 'coal_plant': 3, 'nuclear_plant': 4}
+        blackstart_units.sort(key=lambda x: priority_order.get(x[1].get('type', 'unknown'), 5))
+        
+        step_time = 0
+        
+        # Phase 1: Start blackstart units
+        for comp_id, component in blackstart_units:
+            sequence.append({
+                'step': len(sequence) + 1,
+                'component_id': comp_id,
+                'component_type': component.get('type', 'unknown'),
+                'action': 'start_blackstart_unit',
+                'capacity': component['capacity'],
+                'time': step_time + self._get_blackstart_time(component.get('type', 'unknown')),
+                'phase': 'blackstart_units'
+            })
+            step_time += self._get_blackstart_time(component.get('type', 'unknown'))
+        
+        # Phase 2: Start additional generators in priority order
+        other_generators = [
+            (comp_id, component) for comp_id, component in self.components.items()
+            if not component.get('blackstart_capable', False) and component['capacity'] > 0
+        ]
+        other_generators.sort(key=lambda x: priority_order.get(x[1].get('type', 'unknown'), 5))
+        
+        for comp_id, component in other_generators:
+            sequence.append({
+                'step': len(sequence) + 1,
+                'component_id': comp_id,
+                'component_type': component.get('type', 'unknown'),
+                'action': 'start_generator',
+                'capacity': component['capacity'],
+                'time': step_time + 15.0,  # Standard startup time
+                'phase': 'generation_restoration'
+            })
+            step_time += 15.0
+        
+        # Phase 3: Restore loads incrementally
+        loads = [
+            (comp_id, component) for comp_id, component in self.components.items()
+            if component['capacity'] < 0
+        ]
+        # Sort by priority (critical loads first)
+        loads.sort(key=lambda x: x[1].get('priority', 3))
+        
+        for comp_id, component in loads:
+            sequence.append({
+                'step': len(sequence) + 1,
+                'component_id': comp_id,
+                'component_type': component.get('type', 'load'),
+                'action': 'restore_load',
+                'capacity': abs(component['capacity']),
+                'time': step_time + 5.0,  # Load pickup time
+                'phase': 'load_restoration'
+            })
+            step_time += 5.0
+        
+        return sequence
+    
+    def advance_restoration_sequence(self) -> Optional[Dict]:
+        """Advance to next step in blackstart restoration sequence"""
+        if not self.blackstart_scenario_active or self.current_restoration_phase >= len(self.restoration_sequence):
+            return None
+            
+        current_step = self.restoration_sequence[self.current_restoration_phase]
+        
+        # Execute restoration step
+        component_id = current_step['component_id']
+        if component_id in self.components:
+            component = self.components[component_id]
+            component['is_active'] = True
+            
+            if current_step['action'] == 'restore_load':
+                # Restore load incrementally (25% max increment per European standards)
+                max_increment = abs(component['capacity']) * self.standards.blackstart.load_pickup_increment_max
+                component['current_output'] = min(abs(component['capacity']), max_increment)
+            else:
+                component['current_output'] = component['capacity'] * 0.5  # Start at 50% capacity
+        
+        self.current_restoration_phase += 1
+        
+        # Check if restoration is complete
+        if self.current_restoration_phase >= len(self.restoration_sequence):
+            self.blackstart_scenario_active = False
+            self.current_restoration_phase = 0
+        
+        return current_step
+    
+    def check_voltage_violations(self) -> Dict[str, Dict]:
+        """Check for voltage violations according to European standards"""
+        violations = {}
+        
+        for comp_id, component in self.components.items():
+            voltage_level = component.get('voltage_level', 110)
+            current_voltage = component.get('voltage_magnitude', 1.0)
+            
+            # Get voltage limits based on European standards
+            if voltage_level >= 300:
+                min_voltage = self.standards.voltage.voltage_300_400kv_min
+                max_voltage = self.standards.voltage.voltage_300_400kv_max
+            else:
+                min_voltage = self.standards.voltage.voltage_110_300kv_min
+                max_voltage = self.standards.voltage.voltage_110_300kv_max
+            
+            if current_voltage < min_voltage or current_voltage > max_voltage:
+                violations[comp_id] = {
+                    'current_voltage': current_voltage,
+                    'min_limit': min_voltage,
+                    'max_limit': max_voltage,
+                    'voltage_level': voltage_level,
+                    'severity': 'high' if current_voltage < min_voltage * 0.95 or current_voltage > max_voltage * 1.05 else 'medium'
+                }
+        
+        self.voltage_violations = violations
+        return violations
+    
+    def apply_voltage_control(self) -> Dict[str, float]:
+        """Apply automatic voltage control to generators with AVR enabled"""
+        voltage_adjustments = {}
+        
+        for comp_id, component in self.components.items():
+            if component.get('voltage_control_enabled', False) and component.get('avr_enabled', False):
+                # Get voltage setpoint and current voltage
+                voltage_setpoint = component.get('voltage_setpoint', 1.0)
+                current_voltage = component.get('voltage_magnitude', 1.0)
+                
+                # Calculate voltage error
+                voltage_error = voltage_setpoint - current_voltage
+                
+                # Apply PI control for AVR
+                kp = 20.0  # Proportional gain
+                ki = 5.0   # Integral gain
+                dt = 1.0   # Time step
+                
+                # PI controller output
+                pi_output = kp * voltage_error + ki * voltage_error * dt
+                
+                # Apply excitation limits
+                max_excitation = self.standards.voltage.excitation_system_ceiling
+                min_excitation = self.standards.voltage.excitation_system_floor
+                limited_output = max(min_excitation, min(max_excitation, pi_output))
+                
+                # Convert to reactive power adjustment
+                reactive_power_adjustment = limited_output * component['capacity'] * 0.1
+                
+                # Apply reactive power limits
+                max_q = component.get('reactive_power_limits', {}).get('max', component['capacity'] * 0.5)
+                min_q = component.get('reactive_power_limits', {}).get('min', -component['capacity'] * 0.5)
+                
+                new_reactive_power = max(min_q, min(max_q, reactive_power_adjustment))
+                component['reactive_power'] = new_reactive_power
+                
+                voltage_adjustments[comp_id] = new_reactive_power
+        
+        return voltage_adjustments

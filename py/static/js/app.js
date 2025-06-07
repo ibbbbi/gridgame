@@ -1,7 +1,6 @@
 /**
- * European Power Grid Builder - Advanced Web Interface
- * Interactive canvas-based grid building with SO GL compliance
- * Version 2.0 - Enhanced European Standards Implementation
+ * Power Grid Builder - Web Interface JavaScript
+ * Interactive canvas-based grid building application
  */
 
 class PowerGridApp {
@@ -19,30 +18,6 @@ class PowerGridApp {
         this.panX = 0;
         this.panY = 0;
         
-        // Enhanced European game mode
-        this.europeanMode = false;
-        this.simulationRunning = false;
-        this.realTimeMode = true;
-        this.complianceMonitoring = true;
-        
-        // Advanced features
-        this.gridEvents = [];
-        this.contingencyAnalysis = false;
-        this.fcr_activation = 0;
-        this.frr_activation = 0;
-        this.systemState = 'normal';
-        this.frequencyHistory = [];
-        this.complianceScore = 100;
-        
-        // Performance monitoring
-        this.lastUpdateTime = Date.now();
-        this.frameRate = 60;
-        
-        // Enhanced modules (initialized later)
-        this.webSocketIntegration = null;
-        this.performanceMonitor = null;
-        this.advancedRenderer = null;
-        
         this.init();
     }
 
@@ -52,26 +27,10 @@ class PowerGridApp {
         this.loadGameData();
         this.draw();
         
-        // Initialize advanced modules
-        this.initializeAdvancedModules();
-        
-        // Enhanced update intervals
+        // Update game status every second
         setInterval(() => this.updateGameStatus(), 1000);
-        setInterval(() => this.updateRealTimeData(), 100); // High-frequency updates
-        
-        // Initialize enhanced European mode controls
-        this.setupEuropeanModeControls();
-        this.initializeComplianceMonitoring();
-        this.startPerformanceMonitoring();
-        
-        // Auto-save functionality
-        setInterval(() => this.autoSave(), 30000);
-        
-        // Initialize interactive whiteboard
-        this.whiteboard = null;
-        this.initializeWhiteboard();
     }
-    
+
     setupEventListeners() {
         // Tool selection
         document.querySelectorAll('.tool-btn').forEach(btn => {
@@ -107,320 +66,12 @@ class PowerGridApp {
 
         // Window resize
         window.addEventListener('resize', () => this.resizeCanvas());
+        
+        // Initialize U/Q Control and Blackstart panels
+        this.setupUQControlPanel();
+        this.setupBlackstartPanel();
     }
 
-    setupEuropeanModeControls() {
-        // Game mode toggle
-        document.getElementById('classic-mode').addEventListener('click', () => {
-            this.switchToClassicMode();
-        });
-        
-        document.getElementById('european-mode').addEventListener('click', () => {
-            this.switchToEuropeanMode();
-        });
-        
-        // Enhanced European simulation controls
-        document.getElementById('start-simulation')?.addEventListener('click', () => {
-            this.startEuropeanSimulation();
-        });
-        
-        document.getElementById('stop-simulation')?.addEventListener('click', () => {
-            this.stopEuropeanSimulation();
-        });
-        
-        document.getElementById('view-compliance')?.addEventListener('click', () => {
-            this.showComplianceReport();
-        });
-        
-        // New advanced controls
-        document.getElementById('n1-analysis')?.addEventListener('click', () => {
-            this.runContingencyAnalysis();
-        });
-        
-        document.getElementById('frequency-chart')?.addEventListener('click', () => {
-            this.showFrequencyChart();
-        });
-        
-        document.getElementById('system-events')?.addEventListener('click', () => {
-            this.showSystemEvents();
-        });
-        
-        document.getElementById('export-data')?.addEventListener('click', () => {
-            this.exportSimulationData();
-        });
-        
-        // Real-time controls
-        document.getElementById('real-time-toggle')?.addEventListener('change', (e) => {
-            this.realTimeMode = e.target.checked;
-        });
-        
-        document.getElementById('compliance-toggle')?.addEventListener('change', (e) => {
-            this.complianceMonitoring = e.target.checked;
-        });
-    }
-    
-    switchToEuropeanMode() {
-        this.europeanMode = true;
-        document.getElementById('classic-mode').classList.remove('active');
-        document.getElementById('european-mode').classList.add('active');
-        
-        // Show European-specific controls
-        document.querySelectorAll('.european-controls').forEach(el => {
-            el.style.display = 'block';
-        });
-        
-        document.querySelectorAll('.classic-tools').forEach(el => {
-            el.style.display = 'none';
-        });
-        
-        document.querySelectorAll('.european-tools').forEach(el => {
-            el.style.display = 'block';
-        });
-        
-        // Load European component library
-        this.loadEuropeanComponents();
-        
-        // Enable real-time monitoring
-        this.initializeComplianceMonitoring();
-        
-        console.log('Switched to European SO GL Mode');
-    }
-    
-    switchToClassicMode() {
-        this.europeanMode = false;
-        this.simulationRunning = false;
-        
-        document.getElementById('european-mode').classList.remove('active');
-        document.getElementById('classic-mode').classList.add('active');
-        
-        // Hide European-specific controls
-        document.querySelectorAll('.european-controls').forEach(el => {
-            el.style.display = 'none';
-        });
-        
-        document.querySelectorAll('.european-tools').forEach(el => {
-            el.style.display = 'none';
-        });
-        
-        document.querySelectorAll('.classic-tools').forEach(el => {
-            el.style.display = 'block';
-        });
-        
-        console.log('Switched to Classic Mode');
-    }
-    
-    loadEuropeanComponents() {
-        // Load European-specific component specifications
-        fetch('/api/european/components')
-            .then(response => response.json())
-            .then(components => {
-                this.europeanComponents = components;
-                this.updateEuropeanToolbar();
-            })
-            .catch(error => console.error('Failed to load European components:', error));
-    }
-    
-    updateEuropeanToolbar() {
-        const toolbar = document.querySelector('.european-tools');
-        if (!toolbar || !this.europeanComponents) return;
-        
-        // Clear existing buttons
-        toolbar.innerHTML = '<h3>European SO GL Components</h3>';
-        
-        Object.entries(this.europeanComponents).forEach(([key, component]) => {
-            const button = document.createElement('button');
-            button.className = 'tool-btn european-component';
-            button.dataset.tool = key;
-            button.title = `${component.description} - ${component.capacity} MW - €${component.cost.toLocaleString()}`;
-            button.innerHTML = `
-                <i class="fas ${this.getComponentIcon(key)}"></i>
-                <span>${component.description.split(' ')[0]}</span>
-                <small>${component.capacity} MW</small>
-            `;
-            
-            button.addEventListener('click', () => this.selectTool(key));
-            toolbar.appendChild(button);
-        });
-    }
-    
-    getComponentIcon(componentType) {
-        const icons = {
-            'nuclear_plant': 'fa-atom',
-            'coal_plant': 'fa-industry',
-            'gas_plant': 'fa-fire',
-            'hydro_plant': 'fa-water',
-            'wind_farm': 'fa-wind',
-            'solar_farm': 'fa-solar-panel',
-            'substation_400': 'fa-plug',
-            'substation_220': 'fa-plug',
-            'transmission_400': 'fa-grip-lines',
-            'transmission_220': 'fa-grip-lines',
-            'hvdc_line': 'fa-bolt'
-        };
-        
-        return icons[componentType] || 'fa-cog';
-    }
-    
-    startEuropeanSimulation() {
-        if (this.simulationRunning) return;
-        
-        fetch('/api/european/start-simulation', { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    this.simulationRunning = true;
-                    this.updateSimulationControls();
-                    console.log('European simulation started');
-                } else {
-                    alert('Failed to start simulation: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Simulation start failed:', error);
-                alert('Failed to start simulation');
-            });
-    }
-    
-    stopEuropeanSimulation() {
-        if (!this.simulationRunning) return;
-        
-        fetch('/api/european/stop-simulation', { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                this.simulationRunning = false;
-                this.updateSimulationControls();
-                console.log('European simulation stopped');
-            })
-            .catch(error => {
-                console.error('Simulation stop failed:', error);
-            });
-    }
-    
-    updateSimulationControls() {
-        const startBtn = document.getElementById('start-simulation');
-        const stopBtn = document.getElementById('stop-simulation');
-        
-        if (startBtn) startBtn.disabled = this.simulationRunning;
-        if (stopBtn) stopBtn.disabled = !this.simulationRunning;
-    }
-    
-    runContingencyAnalysis() {
-        if (!this.europeanMode) return;
-        
-        this.contingencyAnalysis = true;
-        
-        fetch('/api/european/n1-analysis', { method: 'POST' })
-            .then(response => response.json())
-            .then(data => {
-                this.showContingencyResults(data);
-                this.contingencyAnalysis = false;
-            })
-            .catch(error => {
-                console.error('N-1 analysis failed:', error);
-                this.contingencyAnalysis = false;
-            });
-    }
-    
-    showContingencyResults(results) {
-        const modal = document.getElementById('contingency-modal');
-        if (!modal) return;
-        
-        const tbody = modal.querySelector('tbody');
-        tbody.innerHTML = '';
-        
-        results.forEach(result => {
-            const row = document.createElement('tr');
-            row.className = result.critical ? 'critical' : 'normal';
-            row.innerHTML = `
-                <td>${result.contingency_id}</td>
-                <td>${result.component_type}</td>
-                <td>${result.converged ? 'Yes' : 'No'}</td>
-                <td>${result.max_voltage_violation.toFixed(3)}</td>
-                <td>${result.max_thermal_violation.toFixed(1)}%</td>
-                <td>${Math.round(result.load_shed)} MW</td>
-            `;
-            tbody.appendChild(row);
-        });
-        
-        modal.style.display = 'block';
-    }
-    
-    showFrequencyChart() {
-        if (!this.frequencyHistory.length) {
-            alert('No frequency data available');
-            return;
-        }
-        
-        // Create frequency chart using Chart.js
-        const modal = document.getElementById('frequency-chart-modal');
-        if (!modal) return;
-        
-        const ctx = modal.querySelector('#frequency-chart-canvas');
-        
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: this.frequencyHistory.map(point => 
-                    new Date(point.timestamp).toLocaleTimeString()
-                ),
-                datasets: [{
-                    label: 'Frequency (Hz)',
-                    data: this.frequencyHistory.map(point => point.frequency),
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1
-                }, {
-                    label: 'Deviation (mHz)',
-                    data: this.frequencyHistory.map(point => point.deviation),
-                    borderColor: 'rgb(255, 99, 132)',
-                    yAxisID: 'y1'
-                }]
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: false,
-                        min: 49.8,
-                        max: 50.2
-                    },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        grid: {
-                            drawOnChartArea: false,
-                        },
-                    }
-                }
-            }
-        });
-        
-        modal.style.display = 'block';
-    }
-    
-    exportSimulationData() {
-        const data = {
-            frequencyHistory: this.frequencyHistory,
-            complianceMetrics: this.complianceMetrics,
-            gridEvents: this.gridEvents,
-            systemState: this.systemState,
-            components: this.components,
-            timestamp: new Date().toISOString()
-        };
-        
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `european-grid-simulation-${Date.now()}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        
-        URL.revokeObjectURL(url);
-    }
-    
     selectTool(tool) {
         // Deselect all tools
         document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
@@ -760,656 +411,6 @@ class PowerGridApp {
             console.error('Error updating status:', error);
         }
     }
-    
-    async updateEuropeanStatus() {
-        if (!this.europeanMode) return;
-        
-        try {
-            const response = await fetch('/api/european/status');
-            const data = await response.json();
-            
-            // Update frequency display
-            document.getElementById('frequency').textContent = data.frequency.toFixed(3);
-            
-            // Update frequency deviation with color coding
-            const freqDeviationElement = document.getElementById('freq-deviation');
-            const deviation = data.frequency_deviation_mhz;
-            freqDeviationElement.textContent = `${deviation >= 0 ? '+' : ''}${deviation.toFixed(1)} mHz`;
-            
-            // Update system state with color coding
-            const systemStateElement = document.getElementById('system-state');
-            systemStateElement.textContent = data.system_state.toUpperCase();
-            systemStateElement.className = `status-${data.system_state}`;
-            
-            // Update other status fields
-            document.getElementById('generation').textContent = Math.round(data.generation_capacity);
-            document.getElementById('load').textContent = Math.round(data.load_demand);
-            document.getElementById('fcr').textContent = Math.round(data.fcr_available);
-            document.getElementById('fcr-available').textContent = `${Math.round(data.fcr_available)} MW`;
-            document.getElementById('frr-available').textContent = `${Math.round(data.frr_available)} MW`;
-            document.getElementById('compliance-score').textContent = `${data.compliance_score.toFixed(1)}%`;
-            document.getElementById('reliability-score').textContent = `${data.reliability_score.toFixed(1)}%`;
-            document.getElementById('budget').textContent = Math.round(data.budget);
-            
-        } catch (error) {
-            console.error('Failed to update European status:', error);
-        }
-    }
-    
-    async loadEuropeanStandards() {
-        try {
-            const response = await fetch('/api/european/standards');
-            const data = await response.json();
-            console.log('European Standards loaded:', data);
-        } catch (error) {
-            console.error('Failed to load European standards:', error);
-        }
-    }
-    
-    async startEuropeanSimulation() {
-        try {
-            const response = await fetch('/api/european/start_simulation', {
-                method: 'POST'
-            });
-            const data = await response.json();
-            
-            if (data.success) {
-                this.simulationRunning = true;
-                document.getElementById('start-simulation').style.display = 'none';
-                document.getElementById('stop-simulation').style.display = 'inline-block';
-                console.log('European simulation started');
-                
-                // Start updating European status more frequently
-                this.europeanStatusInterval = setInterval(() => {
-                    this.updateEuropeanStatus();
-                }, 1000);
-            }
-        } catch (error) {
-            console.error('Failed to start simulation:', error);
-        }
-    }
-    
-    async stopEuropeanSimulation() {
-        try {
-            const response = await fetch('/api/european/stop_simulation', {
-                method: 'POST'
-            });
-            const data = await response.json();
-            
-            if (data.success) {
-                this.simulationRunning = false;
-                document.getElementById('start-simulation').style.display = 'inline-block';
-                document.getElementById('stop-simulation').style.display = 'none';
-                console.log('European simulation stopped');
-                
-                if (this.europeanStatusInterval) {
-                    clearInterval(this.europeanStatusInterval);
-                }
-            }
-        } catch (error) {
-            console.error('Failed to stop simulation:', error);
-        }
-    }
-    
-    async showComplianceReport() {
-        try {
-            const response = await fetch('/api/european/compliance');
-            const data = await response.json();
-            
-            // Show compliance report in a modal or alert
-            alert(data.summary);
-            
-        } catch (error) {
-            console.error('Failed to get compliance report:', error);
-        }
-    }
-
-    initializeComplianceMonitoring() {
-        this.complianceMetrics = {
-            frequencyDeviations: [],
-            voltageViolations: 0,
-            n1Violations: 0,
-            fcrResponse: [],
-            frrResponse: [],
-            reserveShortfalls: 0
-        };
-        
-        this.europeanStandards = {
-            frequency: {
-                normal: { min: 49.95, max: 50.05 },
-                alert: { min: 49.90, max: 50.10 },
-                emergency: { min: 49.80, max: 50.20 }
-            },
-            voltage: {
-                hv400: { min: 0.90, max: 1.05 },
-                hv220: { min: 0.90, max: 1.10 },
-                hv110: { min: 0.90, max: 1.10 }
-            },
-            reserves: {
-                fcr: 3000, // MW total for Continental Europe
-                frr: 1500  // MW per area
-            }
-        };
-    }
-    
-    startPerformanceMonitoring() {
-        this.performanceMonitor = {
-            frameCount: 0,
-            lastFrameTime: Date.now(),
-            averageFrameTime: 16.67, // 60 FPS target
-            memoryUsage: 0
-        };
-    }
-    
-    initializeAdvancedModules() {
-        // Initialize Advanced Renderer
-        if (window.AdvancedGridRenderer) {
-            this.advancedRenderer = new window.AdvancedGridRenderer(this.canvas, this.ctx);
-            console.log('Advanced Grid Renderer initialized');
-        }
-        
-        // Initialize Performance Monitor
-        if (window.PerformanceMonitor) {
-            this.performanceMonitor = new window.PerformanceMonitor(this);
-            console.log('Performance Monitor initialized');
-        }
-        
-        // Initialize WebSocket Integration
-        if (window.WebSocketIntegration) {
-            this.webSocketIntegration = new window.WebSocketIntegration(this);
-            console.log('WebSocket Integration initialized');
-        }
-    }
-    
-    updateRealTimeData() {
-        if (!this.europeanMode || !this.simulationRunning) return;
-        
-        // Fetch real-time simulation data
-        fetch('/api/european/realtime')
-            .then(response => response.json())
-            .then(data => {
-                this.updateFrequencyMonitoring(data);
-                this.updateReserveStatus(data);
-                this.updateComplianceScore(data);
-                this.updateGridEvents(data);
-            })
-            .catch(error => console.warn('Real-time update failed:', error));
-    }
-    
-    updateFrequencyMonitoring(data) {
-        const frequency = data.frequency || 50.0;
-        const deviation = (frequency - 50.0) * 1000; // mHz
-        
-        this.frequencyHistory.push({
-            timestamp: Date.now(),
-            frequency: frequency,
-            deviation: deviation
-        });
-        
-        // Keep only last 300 points (5 minutes at 1 Hz)
-        if (this.frequencyHistory.length > 300) {
-            this.frequencyHistory.shift();
-        }
-        
-        // Update frequency display with precision
-        document.getElementById('frequency').textContent = frequency.toFixed(3);
-        
-        // Update system state based on frequency
-        this.updateSystemState(deviation);
-    }
-    
-    updateSystemState(deviationMHz) {
-        let newState = 'normal';
-        
-        if (Math.abs(deviationMHz) > 200) {
-            newState = 'emergency';
-        } else if (Math.abs(deviationMHz) > 100) {
-            newState = 'alert';
-        }
-        
-        if (newState !== this.systemState) {
-            this.systemState = newState;
-            this.updateSystemStateDisplay();
-            this.logSystemStateChange(newState);
-        }
-    }
-    
-    updateSystemStateDisplay() {
-        const indicator = document.getElementById('system-state');
-        if (indicator) {
-            indicator.textContent = this.systemState.toUpperCase();
-            indicator.className = `system-state-${this.systemState}`;
-        }
-    }
-    
-    updateReserveStatus(data) {
-        this.fcr_activation = data.fcr_activation || 0;
-        this.frr_activation = data.frr_activation || 0;
-        
-        document.getElementById('fcr').textContent = Math.round(data.fcr_available || 0);
-        
-        // Update reserve indicators
-        const fcrIndicator = document.getElementById('fcr-status');
-        const frrIndicator = document.getElementById('frr-status');
-        
-        if (fcrIndicator) {
-            fcrIndicator.textContent = `${Math.round(this.fcr_activation)} MW`;
-            fcrIndicator.className = this.fcr_activation > 0 ? 'reserve-active' : 'reserve-normal';
-        }
-        
-        if (frrIndicator) {
-            frrIndicator.textContent = `${Math.round(this.frr_activation)} MW`;
-            frrIndicator.className = this.frr_activation > 0 ? 'reserve-active' : 'reserve-normal';
-        }
-    }
-    
-    updateComplianceScore(data) {
-        this.complianceScore = data.compliance_score || 100;
-        
-        const scoreElement = document.getElementById('compliance-score');
-        if (scoreElement) {
-            scoreElement.textContent = `${Math.round(this.complianceScore)}%`;
-            scoreElement.className = this.getComplianceClass(this.complianceScore);
-        }
-    }
-    
-    getComplianceClass(score) {
-        if (score >= 95) return 'compliance-excellent';
-        if (score >= 85) return 'compliance-good';
-        if (score >= 70) return 'compliance-warning';
-        return 'compliance-critical';
-    }
-    
-    updateGridEvents(data) {
-        if (data.active_events) {
-            this.gridEvents = data.active_events;
-            this.updateEventDisplay();
-        }
-    }
-    
-    updateEventDisplay() {
-        const eventsList = document.getElementById('active-events');
-        if (!eventsList) return;
-        
-        eventsList.innerHTML = '';
-        
-        this.gridEvents.forEach(event => {
-            const eventElement = document.createElement('div');
-            eventElement.className = `grid-event event-${event.type}`;
-            eventElement.innerHTML = `
-                <div class="event-header">
-                    <span class="event-type">${event.type.replace('_', ' ').toUpperCase()}</span>
-                    <span class="event-magnitude">${Math.round(event.magnitude)} MW</span>
-                </div>
-                <div class="event-description">${event.description}</div>
-                <div class="event-time">Duration: ${Math.round(event.duration)}s</div>
-            `;
-            eventsList.appendChild(eventElement);
-        });
-    }
-    
-    logSystemStateChange(newState) {
-        console.log(`System state changed to: ${newState} at ${new Date().toISOString()}`);
-        
-        // Add to system log
-        const logEntry = {
-            timestamp: new Date().toISOString(),
-            type: 'system_state_change',
-            message: `System state: ${newState}`,
-            severity: newState === 'emergency' ? 'critical' : 
-                     newState === 'alert' ? 'warning' : 'info'
-        };
-        
-        this.addToSystemLog(logEntry);
-    }
-    
-    addToSystemLog(entry) {
-        const logContainer = document.getElementById('system-log');
-        if (!logContainer) return;
-        
-        const logElement = document.createElement('div');
-        logElement.className = `log-entry log-${entry.severity}`;
-        logElement.innerHTML = `
-            <span class="log-time">${new Date(entry.timestamp).toLocaleTimeString()}</span>
-            <span class="log-message">${entry.message}</span>
-        `;
-        
-        logContainer.appendChild(logElement);
-        
-        // Keep only last 50 entries
-        while (logContainer.children.length > 50) {
-            logContainer.removeChild(logContainer.firstChild);
-        }
-        
-        // Auto-scroll to bottom
-        logContainer.scrollTop = logContainer.scrollHeight;
-    }
-    
-    autoSave() {
-        if (!this.europeanMode) return;
-        
-        const gameState = {
-            components: this.components,
-            lines: this.lines,
-            nodes: this.nodes,
-            budget: this.budget,
-            timestamp: Date.now()
-        };
-        
-        localStorage.setItem('europeanGridGameState', JSON.stringify(gameState));
-    }
-    
-    loadAutoSave() {
-        const savedState = localStorage.getItem('europeanGridGameState');
-        if (!savedState) return false;
-        
-        try {
-            const gameState = JSON.parse(savedState);
-            this.components = gameState.components || [];
-            this.lines = gameState.lines || [];
-            this.nodes = gameState.nodes || [];
-            this.budget = gameState.budget || 500000;
-            
-            console.log('Auto-save loaded successfully');
-            return true;
-        } catch (error) {
-            console.error('Failed to load auto-save:', error);
-            return false;
-        }
-    }
-
-    // Interactive Whiteboard Integration
-    initializeWhiteboard() {
-        try {
-            if (typeof InteractiveWhiteboard !== 'undefined') {
-                this.whiteboard = new InteractiveWhiteboard('grid-canvas');
-                console.log('Interactive Whiteboard initialized successfully');
-                
-                // Set up integration callbacks
-                this.setupWhiteboardIntegration();
-            } else {
-                console.warn('InteractiveWhiteboard class not available');
-            }
-        } catch (error) {
-            console.error('Failed to initialize Interactive Whiteboard:', error);
-        }
-    }
-    
-    setupWhiteboardIntegration() {
-        if (!this.whiteboard) return;
-        
-        // Override canvas resize to work with whiteboard
-        const originalResizeCanvas = this.resizeCanvas.bind(this);
-        this.resizeCanvas = () => {
-            originalResizeCanvas();
-            if (this.whiteboard) {
-                this.whiteboard.handleResize();
-            }
-        };
-        
-        // Add whiteboard export functionality
-        this.addWhiteboardExportFeatures();
-        
-        // Sync whiteboard mode with app state
-        this.syncWhiteboardState();
-    }
-    
-    addWhiteboardExportFeatures() {
-        // Add export to grid button
-        const exportBtn = document.createElement('button');
-        exportBtn.id = 'export-whiteboard-to-grid';
-        exportBtn.className = 'btn btn-secondary';
-        exportBtn.innerHTML = '<i class="fas fa-download"></i> Import from Whiteboard';
-        exportBtn.title = 'Import whiteboard design as grid components';
-        exportBtn.style.display = 'none';
-        
-        exportBtn.addEventListener('click', () => this.importFromWhiteboard());
-        
-        // Add to control panel
-        const controlPanel = document.querySelector('.controls');
-        if (controlPanel) {
-            controlPanel.appendChild(exportBtn);
-        }
-        
-        // Add export current grid to whiteboard button
-        const importBtn = document.createElement('button');
-        importBtn.id = 'import-grid-to-whiteboard';
-        importBtn.className = 'btn btn-secondary';
-        importBtn.innerHTML = '<i class="fas fa-upload"></i> Export to Whiteboard';
-        importBtn.title = 'Export current grid to whiteboard for editing';
-        
-        importBtn.addEventListener('click', () => this.exportToWhiteboard());
-        
-        if (controlPanel) {
-            controlPanel.appendChild(importBtn);
-        }
-        
-        // Show/hide buttons based on whiteboard mode
-        this.updateWhiteboardButtons();
-    }
-    
-    syncWhiteboardState() {
-        // Listen for whiteboard mode changes
-        const whiteboardToggle = document.getElementById('whiteboard-toggle');
-        if (whiteboardToggle) {
-            const originalToggle = this.whiteboard.toggleWhiteboardMode.bind(this.whiteboard);
-            this.whiteboard.toggleWhiteboardMode = () => {
-                originalToggle();
-                this.updateWhiteboardButtons();
-                
-                // Sync with main app state
-                if (this.whiteboard.whiteboardMode) {
-                    this.currentTool = null;
-                    this.selectTool(null);
-                }
-            };
-        }
-    }
-    
-    updateWhiteboardButtons() {
-        const exportBtn = document.getElementById('export-whiteboard-to-grid');
-        const importBtn = document.getElementById('import-grid-to-whiteboard');
-        
-        if (this.whiteboard && this.whiteboard.whiteboardMode) {
-            if (exportBtn) exportBtn.style.display = 'inline-block';
-            if (importBtn) importBtn.style.display = 'none';
-        } else {
-            if (exportBtn) exportBtn.style.display = 'none';
-            if (importBtn) importBtn.style.display = 'inline-block';
-        }
-    }
-    
-    async importFromWhiteboard() {
-        if (!this.whiteboard) {
-            this.showMessage('Whiteboard not available', 'error');
-            return;
-        }
-        
-        try {
-            const whiteboardComponents = this.whiteboard.exportToGrid();
-            
-            if (whiteboardComponents.length === 0) {
-                this.showMessage('No components found in whiteboard to import', 'warning');
-                return;
-            }
-            
-            // Convert whiteboard components to grid components
-            const gridComponents = whiteboardComponents.map(comp => {
-                return {
-                    type: this.mapWhiteboardToGridType(comp.type),
-                    x: Math.round(comp.x),
-                    y: Math.round(comp.y),
-                    properties: comp.properties || {}
-                };
-            });
-            
-            // Add components to the grid
-            for (const comp of gridComponents) {
-                await this.addComponentFromWhiteboard(comp);
-            }
-            
-            this.showMessage(`Imported ${gridComponents.length} components from whiteboard`, 'success');
-            this.loadGameData();
-            this.draw();
-            
-        } catch (error) {
-            this.showMessage('Error importing from whiteboard: ' + error.message, 'error');
-        }
-    }
-    
-    mapWhiteboardToGridType(whiteboardType) {
-        const typeMap = {
-            'generator': 'generator',
-            'substation': 'substation', 
-            'load': 'load',
-            'transmission': 'transmission_line',
-            'transformer': 'transformer'
-        };
-        
-        return typeMap[whiteboardType] || 'generator';
-    }
-    
-    async addComponentFromWhiteboard(component) {
-        try {
-            const response = await fetch('/api/components', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: component.type,
-                    x: component.x,
-                    y: component.y,
-                    properties: component.properties
-                })
-            });
-            
-            const result = await response.json();
-            if (!result.success) {
-                console.warn(`Failed to add component: ${result.message}`);
-            }
-        } catch (error) {
-            console.error('Error adding component from whiteboard:', error);
-        }
-    }
-    
-    exportToWhiteboard() {
-        if (!this.whiteboard) {
-            this.showMessage('Whiteboard not available', 'error');
-            return;
-        }
-        
-        try {
-            // Convert current grid components to whiteboard format
-            const whiteboardComponents = this.components.map(comp => {
-                return {
-                    type: this.mapGridToWhiteboardType(comp.type),
-                    x: comp.x,
-                    y: comp.y,
-                    properties: comp.properties || {}
-                };
-            });
-            
-            // Import to whiteboard
-            this.whiteboard.importFromGrid(whiteboardComponents);
-            
-            // Switch to whiteboard mode
-            if (!this.whiteboard.whiteboardMode) {
-                this.whiteboard.toggleWhiteboardMode();
-            }
-            
-            this.showMessage(`Exported ${whiteboardComponents.length} components to whiteboard`, 'success');
-            
-        } catch (error) {
-            this.showMessage('Error exporting to whiteboard: ' + error.message, 'error');
-        }
-    }
-    
-    mapGridToWhiteboardType(gridType) {
-        const typeMap = {
-            'generator': 'generator',
-            'nuclear_plant': 'generator',
-            'coal_plant': 'generator',
-            'gas_plant': 'generator',
-            'hydro_plant': 'generator',
-            'wind_farm': 'generator',
-            'solar_farm': 'generator',
-            'substation': 'substation',
-            'load': 'load',
-            'industrial_load': 'load',
-            'transmission_line': 'transmission',
-            'transformer': 'transformer'
-        };
-        
-        return typeMap[gridType] || 'generator';
-    }
-
-    // Enhanced mobile touch support for whiteboard integration
-    handleMobileWhiteboardInteraction() {
-        if (!this.whiteboard || !this.whiteboard.whiteboardMode) return;
-        
-        // Add mobile-specific gesture handlers
-        let lastTap = 0;
-        
-        this.canvas.addEventListener('touchstart', (e) => {
-            const currentTime = new Date().getTime();
-            const tapLength = currentTime - lastTap;
-            
-            if (tapLength < 500 && tapLength > 0) {
-                // Double tap detected
-                e.preventDefault();
-                this.handleDoubleTapWhiteboard(e);
-            }
-            
-            lastTap = currentTime;
-        });
-    }
-    
-    handleDoubleTapWhiteboard(e) {
-        if (!this.whiteboard) return;
-        
-        // Double tap to center/reset view
-        this.whiteboard.transform.translateX = 0;
-        this.whiteboard.transform.translateY = 0;
-        this.whiteboard.transform.scale = 1;
-        this.whiteboard.redraw();
-        
-        // Show feedback
-        this.showTouchFeedback(e.touches[0]);
-    }
-    
-    showTouchFeedback(touch) {
-        const feedback = document.createElement('div');
-        feedback.className = 'touch-feedback';
-        feedback.style.left = touch.clientX + 'px';
-        feedback.style.top = touch.clientY + 'px';
-        
-        document.body.appendChild(feedback);
-        
-        setTimeout(() => {
-            if (feedback.parentNode) {
-                feedback.parentNode.removeChild(feedback);
-            }
-        }, 600);
-    }
-
-    // Enhanced whiteboard-specific drawing optimization
-    optimizeWhiteboardRendering() {
-        if (!this.whiteboard) return;
-        
-        // Use requestAnimationFrame for smooth drawing
-        let animationId;
-        const optimizedRedraw = () => {
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-            }
-            
-            animationId = requestAnimationFrame(() => {
-                this.whiteboard.redraw();
-            });
-        };
-        
-        // Replace whiteboard redraw with optimized version
-        this.whiteboard.redraw = optimizedRedraw;
-    }
 
     draw() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -1419,24 +420,20 @@ class PowerGridApp {
         this.ctx.translate(this.panX, this.panY);
         this.ctx.scale(this.zoom, this.zoom);
         
-        // Use advanced renderer if available and in European mode
-        if (this.advancedRenderer && this.europeanMode) {
-            this.advancedRenderer.render(this.components, this.lines, this.nodes, {
-                zoom: this.zoom,
-                panX: this.panX,
-                panY: this.panY,
-                selectedComponent: this.selectedComponent,
-                connectionStart: this.connectionStart,
-                currentTool: this.currentTool
-            });
-        } else {
-            // Fallback to basic rendering
-            this.drawGrid();
-            this.drawLines();
-            this.drawComponents();
-            this.drawNodes();
-            this.drawConnectionPreview();
-        }
+        // Draw grid
+        this.drawGrid();
+        
+        // Draw lines first (so they appear behind components)
+        this.drawLines();
+        
+        // Draw components
+        this.drawComponents();
+        
+        // Draw nodes
+        this.drawNodes();
+        
+        // Draw connection preview
+        this.drawConnectionPreview();
         
         this.ctx.restore();
     }
@@ -1586,7 +583,7 @@ class PowerGridApp {
         this.ctx.setLineDash([]);
         
         // Draw line label
-        const midX = (fromComponent.position.x + toComponent.position.x) / 2;
+        const midX = (fromComponent.position.x + toComponent.position.y) / 2;
         const midY = (fromComponent.position.y + toComponent.position.y) / 2;
         
         this.ctx.fillStyle = '#2c3e50';
@@ -1744,6 +741,420 @@ class PowerGridApp {
                 messageDiv.parentNode.removeChild(messageDiv);
             }
         }, 5000);
+    }
+    
+    // U/Q Control Methods
+    async setupUQControlPanel() {
+        // Target voltage slider
+        const targetVoltageSlider = document.getElementById('target-voltage');
+        const targetVoltageValue = document.getElementById('target-voltage-value');
+        
+        if (targetVoltageSlider && targetVoltageValue) {
+            targetVoltageSlider.addEventListener('input', (e) => {
+                targetVoltageValue.textContent = `${parseFloat(e.target.value).toFixed(2)} pu`;
+            });
+        }
+        
+        // Voltage control mode selection
+        const voltageControlMode = document.getElementById('voltage-control-mode');
+        if (voltageControlMode) {
+            voltageControlMode.addEventListener('change', (e) => {
+                this.updateVoltageControlMode(e.target.value);
+            });
+        }
+        
+        // U/Q Control buttons
+        const optimizeVoltageBtn = document.getElementById('optimize-voltage');
+        if (optimizeVoltageBtn) {
+            optimizeVoltageBtn.addEventListener('click', () => this.optimizeVoltageControl());
+        }
+        
+        const resetAVRBtn = document.getElementById('reset-avr');
+        if (resetAVRBtn) {
+            resetAVRBtn.addEventListener('click', () => this.resetAVR());
+        }
+        
+        const voltageSensitivityBtn = document.getElementById('voltage-sensitivity');
+        if (voltageSensitivityBtn) {
+            voltageSensitivityBtn.addEventListener('click', () => this.performVoltageSensitivityAnalysis());
+        }
+    }
+    
+    async updateVoltageControlMode(mode) {
+        try {
+            const response = await fetch('/api/european/uq-control/mode', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({mode: mode})
+            });
+            const result = await response.json();
+            this.showMessage(`Voltage control mode set to: ${mode}`, 'success');
+        } catch (error) {
+            this.showMessage('Error updating voltage control mode: ' + error.message, 'error');
+        }
+    }
+    
+    async optimizeVoltageControl() {
+        try {
+            const targetVoltage = parseFloat(document.getElementById('target-voltage').value);
+            
+            const response = await fetch('/api/european/uq-control/optimize', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({targetVoltage: targetVoltage})
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                this.updateUQControlDisplay(result.data);
+                this.showMessage('Voltage control optimization completed', 'success');
+            } else {
+                this.showMessage('U/Q Control optimization failed: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showMessage('Error optimizing voltage control: ' + error.message, 'error');
+        }
+    }
+    
+    async resetAVR() {
+        try {
+            const response = await fetch('/api/european/uq-control/reset-avr', {
+                method: 'POST'
+            });
+            const result = await response.json();
+            this.showMessage('AVR reset successfully', 'success');
+            this.updateUQControlDisplay(result.data);
+        } catch (error) {
+            this.showMessage('Error resetting AVR: ' + error.message, 'error');
+        }
+    }
+    
+    async performVoltageSensitivityAnalysis() {
+        try {
+            const response = await fetch('/api/european/uq-control/sensitivity');
+            const result = await response.json();
+            
+            if (result.success) {
+                this.displayVoltageSensitivityResults(result.data);
+            } else {
+                this.showMessage('Voltage sensitivity analysis failed: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showMessage('Error performing voltage sensitivity analysis: ' + error.message, 'error');
+        }
+    }
+    
+    updateUQControlDisplay(data) {
+        // Update voltage deviation
+        const voltageDeviation = document.getElementById('voltage-deviation');
+        if (voltageDeviation && data.voltageDeviation !== undefined) {
+            const deviation = data.voltageDeviation;
+            voltageDeviation.textContent = `${deviation >= 0 ? '+' : ''}${deviation.toFixed(3)} pu`;
+            voltageDeviation.className = Math.abs(deviation) > 0.05 ? 'status-warning' : 'status-normal';
+        }
+        
+        // Update reactive power
+        const reactivePower = document.getElementById('reactive-power');
+        if (reactivePower && data.reactivePower !== undefined) {
+            reactivePower.textContent = `${data.reactivePower.toFixed(1)} MVAr`;
+        }
+        
+        // Update AVR output
+        const avrOutput = document.getElementById('avr-output');
+        if (avrOutput && data.avrOutput !== undefined) {
+            avrOutput.textContent = `${data.avrOutput.toFixed(2)} pu`;
+        }
+        
+        // Update excitation status
+        const excitationStatus = document.getElementById('excitation-status');
+        if (excitationStatus && data.excitationStatus) {
+            excitationStatus.textContent = data.excitationStatus;
+            excitationStatus.className = data.excitationStatus === 'NORMAL' ? 'status-normal' : 'status-warning';
+        }
+        
+        // Update bus voltages
+        if (data.busVoltages) {
+            Object.keys(data.busVoltages).forEach((busId, index) => {
+                const busVoltageElement = document.getElementById(`bus${index + 1}-voltage`);
+                if (busVoltageElement) {
+                    const voltage = data.busVoltages[busId];
+                    busVoltageElement.textContent = `${voltage.toFixed(3)} pu`;
+                    
+                    // Color code based on European voltage standards
+                    if (voltage < 0.90 || voltage > 1.05) {
+                        busVoltageElement.className = 'voltage-violation';
+                    } else if (voltage < 0.95 || voltage > 1.02) {
+                        busVoltageElement.className = 'voltage-warning';
+                    } else {
+                        busVoltageElement.className = 'voltage-normal';
+                    }
+                }
+            });
+        }
+    }
+    
+    displayVoltageSensitivityResults(data) {
+        // Create a modal or panel to display sensitivity matrix results
+        const sensitivityModal = document.createElement('div');
+        sensitivityModal.className = 'modal';
+        sensitivityModal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Voltage Sensitivity Analysis (dV/dQ)</h3>
+                    <button class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="sensitivity-matrix">
+                        ${this.renderSensitivityMatrix(data.sensitivityMatrix)}
+                    </div>
+                    <div class="sensitivity-analysis">
+                        <h4>Analysis Results:</h4>
+                        <p>Most sensitive bus: ${data.mostSensitiveBus}</p>
+                        <p>Maximum sensitivity: ${data.maxSensitivity.toFixed(4)} pu/MVAr</p>
+                        <p>Voltage control effectiveness: ${data.controlEffectiveness}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(sensitivityModal);
+        sensitivityModal.style.display = 'block';
+        
+        // Close modal functionality
+        const closeBtn = sensitivityModal.querySelector('.close-btn');
+        closeBtn.addEventListener('click', () => {
+            document.body.removeChild(sensitivityModal);
+        });
+    }
+    
+    // Blackstart Control Methods
+    async setupBlackstartPanel() {
+        // Blackstart control buttons
+        const assessBlackstartBtn = document.getElementById('assess-blackstart');
+        if (assessBlackstartBtn) {
+            assessBlackstartBtn.addEventListener('click', () => this.assessBlackstartCapability());
+        }
+        
+        const generateSequenceBtn = document.getElementById('generate-sequence');
+        if (generateSequenceBtn) {
+            generateSequenceBtn.addEventListener('click', () => this.generateRestorationSequence());
+        }
+        
+        const simulateBlackstartBtn = document.getElementById('simulate-blackstart');
+        if (simulateBlackstartBtn) {
+            simulateBlackstartBtn.addEventListener('click', () => this.simulateBlackstartProcedure());
+        }
+        
+        const blackstartTrainingBtn = document.getElementById('blackstart-training');
+        if (blackstartTrainingBtn) {
+            blackstartTrainingBtn.addEventListener('click', () => this.startBlackstartTraining());
+        }
+    }
+    
+    async assessBlackstartCapability() {
+        try {
+            const response = await fetch('/api/european/blackstart/assess');
+            const result = await response.json();
+            
+            if (result.success) {
+                this.updateBlackstartDisplay(result.data);
+                this.showMessage('Blackstart capability assessment completed', 'success');
+            } else {
+                this.showMessage('Blackstart assessment failed: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showMessage('Error assessing blackstart capability: ' + error.message, 'error');
+        }
+    }
+    
+    async generateRestorationSequence() {
+        try {
+            const response = await fetch('/api/european/blackstart/sequence', {
+                method: 'POST'
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                this.displayRestorationSequence(result.data.sequence);
+                this.updateBlackstartControls(true);
+                this.showMessage('Restoration sequence generated successfully', 'success');
+            } else {
+                this.showMessage('Failed to generate restoration sequence: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showMessage('Error generating restoration sequence: ' + error.message, 'error');
+        }
+    }
+    
+    async simulateBlackstartProcedure() {
+        try {
+            const response = await fetch('/api/european/blackstart/simulate', {
+                method: 'POST'
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                this.startBlackstartSimulation(result.data);
+                this.showMessage('Blackstart simulation started', 'success');
+            } else {
+                this.showMessage('Blackstart simulation failed: ' + result.message, 'error');
+            }
+        } catch (error) {
+            this.showMessage('Error starting blackstart simulation: ' + error.message, 'error');
+        }
+    }
+    
+    startBlackstartTraining() {
+        this.showMessage('Blackstart training scenario activated', 'info');
+        // Simulate a blackout scenario
+        this.simulateBlackoutScenario();
+    }
+    
+    updateBlackstartDisplay(data) {
+        // Update blackstart capability percentage
+        const blackstartCapability = document.getElementById('blackstart-capability');
+        if (blackstartCapability && data.capability !== undefined) {
+            const capability = data.capability * 100;
+            blackstartCapability.textContent = `${capability.toFixed(1)}% of demand`;
+            
+            // Color code based on European standards (≥10% required)
+            if (capability >= 10) {
+                blackstartCapability.className = 'status-normal';
+            } else {
+                blackstartCapability.className = 'status-error';
+            }
+        }
+        
+        // Update compliance status
+        const blackstartCompliance = document.getElementById('blackstart-compliance');
+        if (blackstartCompliance && data.compliant !== undefined) {
+            blackstartCompliance.textContent = data.compliant ? 'COMPLIANT' : 'NON-COMPLIANT';
+            blackstartCompliance.className = data.compliant ? 'status-normal' : 'status-error';
+        }
+        
+        // Update blackstart units count
+        const blackstartUnitsCount = document.getElementById('blackstart-units-count');
+        if (blackstartUnitsCount && data.unitsCount !== undefined) {
+            blackstartUnitsCount.textContent = `${data.unitsCount} units`;
+        }
+    }
+    
+    displayRestorationSequence(sequence) {
+        const sequenceList = document.getElementById('restoration-sequence-list');
+        if (!sequenceList) return;
+        
+        sequenceList.innerHTML = '';
+        
+        if (!sequence || sequence.length === 0) {
+            sequenceList.innerHTML = '<div class="sequence-item disabled"><i class="fas fa-exclamation-triangle"></i><span>No restoration sequence available</span></div>';
+            return;
+        }
+        
+        sequence.forEach((step, index) => {
+            const stepElement = document.createElement('div');
+            stepElement.className = 'sequence-item';
+            stepElement.innerHTML = `
+                <div class="step-number">${index + 1}</div>
+                <div class="step-content">
+                    <div class="step-time">T+${step.time_minutes} min</div>
+                    <div class="step-description">${step.description}</div>
+                    <div class="step-phase">Phase ${step.phase}</div>
+                </div>
+                <div class="step-status" data-step="${index}">
+                    <i class="fas fa-clock"></i>
+                </div>
+            `;
+            sequenceList.appendChild(stepElement);
+        });
+    }
+    
+    updateBlackstartControls(sequenceAvailable) {
+        const generateSequenceBtn = document.getElementById('generate-sequence');
+        const simulateBlackstartBtn = document.getElementById('simulate-blackstart');
+        
+        if (generateSequenceBtn && simulateBlackstartBtn) {
+            generateSequenceBtn.disabled = false;
+            simulateBlackstartBtn.disabled = !sequenceAvailable;
+        }
+    }
+    
+    startBlackstartSimulation(data) {
+        const progressBar = document.getElementById('restoration-progress');
+        const phaseElements = document.querySelectorAll('.phase');
+        
+        let currentProgress = 0;
+        const totalSteps = data.sequence ? data.sequence.length : 10;
+        const progressIncrement = 100 / totalSteps;
+        
+        // Simulate restoration progress
+        const progressInterval = setInterval(() => {
+            currentProgress += progressIncrement;
+            
+            if (progressBar) {
+                progressBar.style.width = `${Math.min(currentProgress, 100)}%`;
+            }
+            
+            // Update phase indicators
+            const currentPhase = Math.ceil(currentProgress / 33.33);
+            phaseElements.forEach((phase, index) => {
+                if (index < currentPhase) {
+                    phase.classList.add('completed');
+                } else if (index === currentPhase - 1) {
+                    phase.classList.add('active');
+                }
+            });
+            
+            if (currentProgress >= 100) {
+                clearInterval(progressInterval);
+                this.showMessage('Blackstart simulation completed successfully', 'success');
+            }
+        }, 500);
+    }
+    
+    simulateBlackoutScenario() {
+        // Temporarily disable all components to simulate blackout
+        this.showMessage('⚡ SYSTEM BLACKOUT - Initiating blackstart procedure...', 'error');
+        
+        // Reset the grid to simulate blackout
+        setTimeout(() => {
+            this.showMessage('🔧 Blackstart units online - Beginning restoration sequence', 'warning');
+        }, 2000);
+        
+        setTimeout(() => {
+            this.showMessage('⚡ System restoration in progress...', 'info');
+        }, 4000);
+        
+        setTimeout(() => {
+            this.showMessage('✅ System restoration completed - Training scenario finished', 'success');
+        }, 8000);
+    }
+    
+    renderSensitivityMatrix(matrix) {
+        if (!matrix || !matrix.length) {
+            return '<p>No sensitivity data available</p>';
+        }
+        
+        let html = '<table class="sensitivity-table"><thead><tr><th>Bus</th>';
+        
+        // Header row
+        for (let j = 0; j < matrix[0].length; j++) {
+            html += `<th>Q${j + 1}</th>`;
+        }
+        html += '</tr></thead><tbody>';
+        
+        // Data rows
+        for (let i = 0; i < matrix.length; i++) {
+            html += `<tr><td>V${i + 1}</td>`;
+            for (let j = 0; j < matrix[i].length; j++) {
+                const value = matrix[i][j];
+                const cellClass = Math.abs(value) > 0.1 ? 'high-sensitivity' : 'low-sensitivity';
+                html += `<td class="${cellClass}">${value.toFixed(4)}</td>`;
+            }
+            html += '</tr>';
+        }
+        
+        html += '</tbody></table>';
+        return html;
     }
 }
 

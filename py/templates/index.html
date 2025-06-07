@@ -646,6 +646,143 @@
         </div>
     </div>
 
+    <!-- U/Q Control Panel -->
+        <div class="uq-control-panel" id="uq-control-panel" style="display: none;">
+            <div class="control-section">
+                <h3><i class="fas fa-bolt"></i> Voltage/Reactive Power Control</h3>
+                <div class="uq-grid">
+                    <div class="uq-item">
+                        <label>Voltage Control Mode:</label>
+                        <select id="voltage-control-mode">
+                            <option value="auto">Automatic (AVR)</option>
+                            <option value="manual">Manual Control</option>
+                            <option value="droop">Droop Control</option>
+                        </select>
+                    </div>
+                    <div class="uq-item">
+                        <label>Target Voltage:</label>
+                        <input type="range" id="target-voltage" min="0.90" max="1.05" step="0.01" value="1.00">
+                        <span id="target-voltage-value">1.00 pu</span>
+                    </div>
+                    <div class="uq-item">
+                        <label>Voltage Deviation:</label>
+                        <span id="voltage-deviation" class="status-normal">+0.00 pu</span>
+                    </div>
+                    <div class="uq-item">
+                        <label>Reactive Power:</label>
+                        <span id="reactive-power">0 MVAr</span>
+                    </div>
+                    <div class="uq-item">
+                        <label>AVR Output:</label>
+                        <span id="avr-output">0.00 pu</span>
+                    </div>
+                    <div class="uq-item">
+                        <label>Excitation System:</label>
+                        <span id="excitation-status" class="status-normal">NORMAL</span>
+                    </div>
+                </div>
+                
+                <div class="uq-controls">
+                    <button id="optimize-voltage" class="control-btn">
+                        <i class="fas fa-cogs"></i> Optimize Voltage Control
+                    </button>
+                    <button id="reset-avr" class="control-btn">
+                        <i class="fas fa-undo"></i> Reset AVR
+                    </button>
+                    <button id="voltage-sensitivity" class="control-btn">
+                        <i class="fas fa-search"></i> Voltage Sensitivity Analysis
+                    </button>
+                </div>
+                
+                <div class="voltage-status-grid">
+                    <div class="voltage-bus">
+                        <span>Bus 1:</span>
+                        <span id="bus1-voltage" class="voltage-normal">1.00 pu</span>
+                    </div>
+                    <div class="voltage-bus">
+                        <span>Bus 2:</span>
+                        <span id="bus2-voltage" class="voltage-normal">1.00 pu</span>
+                    </div>
+                    <div class="voltage-bus">
+                        <span>Bus 3:</span>
+                        <span id="bus3-voltage" class="voltage-normal">1.00 pu</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Blackstart Control Panel -->
+        <div class="blackstart-panel" id="blackstart-panel" style="display: none;">
+            <div class="blackstart-section">
+                <h3><i class="fas fa-power-off"></i> Blackstart Capability & Restoration</h3>
+                <div class="blackstart-overview">
+                    <div class="blackstart-item">
+                        <label>Blackstart Capability:</label>
+                        <span id="blackstart-capability" class="status-warning">0% of demand</span>
+                    </div>
+                    <div class="blackstart-item">
+                        <label>European Standard:</label>
+                        <span class="standard-requirement">≥10% of LFC area demand</span>
+                    </div>
+                    <div class="blackstart-item">
+                        <label>Compliance Status:</label>
+                        <span id="blackstart-compliance" class="status-error">NON-COMPLIANT</span>
+                    </div>
+                    <div class="blackstart-item">
+                        <label>Available Blackstart Units:</label>
+                        <span id="blackstart-units-count">0 units</span>
+                    </div>
+                </div>
+                
+                <div class="restoration-sequence">
+                    <h4>Restoration Sequence</h4>
+                    <div id="restoration-sequence-list" class="sequence-list">
+                        <div class="sequence-item disabled">
+                            <i class="fas fa-clock"></i>
+                            <span>No blackstart sequence available</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="blackstart-controls">
+                    <button id="assess-blackstart" class="control-btn">
+                        <i class="fas fa-search"></i> Assess Blackstart Capability
+                    </button>
+                    <button id="generate-sequence" class="control-btn" disabled>
+                        <i class="fas fa-list-ol"></i> Generate Restoration Sequence
+                    </button>
+                    <button id="simulate-blackstart" class="control-btn" disabled>
+                        <i class="fas fa-play"></i> Simulate Blackstart Procedure
+                    </button>
+                    <button id="blackstart-training" class="control-btn">
+                        <i class="fas fa-graduation-cap"></i> Training Scenario
+                    </button>
+                </div>
+                
+                <div class="restoration-status">
+                    <h4>Restoration Progress</h4>
+                    <div class="progress-bar">
+                        <div id="restoration-progress" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="restoration-phases">
+                        <div class="phase" id="phase-1">
+                            <i class="fas fa-circle"></i>
+                            <span>Phase 1: Blackstart Units</span>
+                        </div>
+                        <div class="phase" id="phase-2">
+                            <i class="fas fa-circle"></i>
+                            <span>Phase 2: Generation Restoration</span>
+                        </div>
+                        <div class="phase" id="phase-3">
+                            <i class="fas fa-circle"></i>
+                            <span>Phase 3: Load Restoration</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Enhanced Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Enhanced JavaScript Modules -->

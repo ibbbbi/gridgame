@@ -226,6 +226,199 @@ class EuropeanACPowerFlowSimulator:
         
         return results
     
+    def calculate_voltage_sensitivity_matrix(self, bus_data: Dict[str, ACBusData]) -> np.ndarray:
+        """Calculate voltage sensitivity matrix dV/dQ for U/Q control"""
+        n_buses = len(bus_data)
+        sensitivity_matrix = np.zeros((n_buses, n_buses))
+        
+        bus_ids = list(bus_data.keys())
+        for i, bus_id in enumerate(bus_ids):
+            bus = bus_data[bus_id]
+            
+            # Calculate voltage sensitivity using power flow Jacobian
+            for j, other_bus_id in enumerate(bus_ids):
+                if i == j:
+                    # Self-sensitivity (diagonal element)
+                    sensitivity_matrix[i, j] = 1.0 / bus.reactive_power if bus.reactive_power != 0 else 0.0
+                else:
+                    # Cross-sensitivity based on line impedance
+                    line_impedance = self._get_line_impedance_between_buses(bus_id, other_bus_id)
+                    if line_impedance > 0:
+                        sensitivity_matrix[i, j] = 1.0 / line_impedance
+        
+        return sensitivity_matrix
+    
+    def optimize_voltage_control(self, bus_data: Dict[str, ACBusData], 
+                               target_voltages: Dict[str, float]) -> Dict[str, float]:
+        """Optimize reactive power for voltage control using European standards"""
+        voltage_adjustments = {}
+        
+        for bus_id, bus in bus_data.items():
+            if bus_id in target_voltages:
+                target_voltage = target_voltages[bus_id]
+                current_voltage = bus.voltage_magnitude
+                
+                # Calculate voltage error
+                voltage_error = target_voltage - current_voltage
+                
+                # Apply voltage droop control (5% droop per SO GL)
+                droop = self.standards.voltage.voltage_droop
+                reactive_power_adjustment = voltage_error / droop
+                
+                # Apply AVR response with time constant
+                avr_response = reactive_power_adjustment * (1.0 - math.exp(-1.0 / self.standards.voltage.avr_time_constant))
+                
+                # Limit excitation system response
+                max_excitation = self.standards.voltage.excitation_system_ceiling
+                min_excitation = self.standards.voltage.excitation_system_floor
+                limited_response = max(min_excitation, min(max_excitation, avr_response))
+                
+                voltage_adjustments[bus_id] = limited_response
+        
+        return voltage_adjustments
+    
+    def apply_automatic_voltage_regulator(self, bus_data: Dict[str, ACBusData], 
+                                        time_step: float = 1.0) -> Dict[str, float]:
+        """Apply Automatic Voltage Regulator (AVR) control with PI controller"""
+        avr_outputs = {}
+        
+        for bus_id, bus in bus_data.items():
+            if bus.bus_type == 'generator':  # Only generators have AVR
+                # Get voltage reference (typically 1.0 pu)
+                voltage_reference = 1.0
+                voltage_error = voltage_reference - bus.voltage_magnitude
+                
+                # PI Controller parameters (European standards)
+                kp = 20.0  # Proportional gain
+                ki = 5.0   # Integral gain
+                
+                # Calculate PI output
+                proportional_term = kp * voltage_error
+                integral_term = ki * voltage_error * time_step
+                
+                # Total AVR output
+                avr_output = proportional_term + integral_term
+                
+                # Apply excitation limits
+                max_excitation = self.standards.voltage.excitation_system_ceiling
+                min_excitation = self.standards.voltage.excitation_system_floor
+                limited_output = max(min_excitation, min(max_excitation, avr_output))
+                
+                avr_outputs[bus_id] = limited_output
+        
+        return avr_outputs
+    
+    def assess_blackstart_capability(self, components: List[GridComponent]) -> Dict[str, any]:
+        """Assess blackstart capability according to European standards"""
+        blackstart_assessment = {
+            'blackstart_units': [],
+            'total_blackstart_capacity': 0.0,
+            'area_demand': 0.0,
+            'blackstart_percentage': 0.0,
+            'meets_european_standard': False,
+            'restoration_sequence': []
+        }
+        
+        # Find blackstart capable units and calculate total demand
+        for comp in components:
+            if comp.type == 'generator':
+                # Check if generator has blackstart capability
+                if hasattr(comp, 'blackstart_capable') and comp.blackstart_capable:
+                    blackstart_assessment['blackstart_units'].append({
+                        'id': comp.id,
+                        'capacity': comp.capacity,
+                        'type': getattr(comp, 'generator_type', 'unknown'),
+                        'start_time': getattr(comp, 'start_time', 15.0)  # minutes
+                    })
+                    blackstart_assessment['total_blackstart_capacity'] += comp.capacity
+            
+            elif comp.type == 'load':
+                blackstart_assessment['area_demand'] += comp.capacity
+        
+        # Calculate blackstart percentage
+        if blackstart_assessment['area_demand'] > 0:
+            blackstart_assessment['blackstart_percentage'] = (
+                blackstart_assessment['total_blackstart_capacity'] / 
+                blackstart_assessment['area_demand']
+            )
+        
+        # Check compliance with European standard (10% minimum)
+        blackstart_assessment['meets_european_standard'] = (
+            blackstart_assessment['blackstart_percentage'] >= 
+            self.standards.blackstart.minimum_blackstart_capability
+        )
+        
+        # Generate restoration sequence
+        blackstart_assessment['restoration_sequence'] = self._generate_restoration_sequence(
+            blackstart_assessment['blackstart_units'], components
+        )
+        
+        return blackstart_assessment
+    
+    def _generate_restoration_sequence(self, blackstart_units: List[Dict], 
+                                     all_components: List[GridComponent]) -> List[Dict]:
+        """Generate optimal restoration sequence following European priorities"""
+        sequence = []
+        
+        # Sort blackstart units by priority (fastest start time first)
+        blackstart_units.sort(key=lambda x: x['start_time'])
+        
+        # Phase 1: Start blackstart units
+        for unit in blackstart_units:
+            sequence.append({
+                'phase': 1,
+                'action': 'start_blackstart_unit',
+                'component_id': unit['id'],
+                'time_minutes': unit['start_time'],
+                'description': f"Start blackstart unit {unit['id']} ({unit['capacity']} MW)"
+            })
+        
+        # Phase 2: Restore other generators by priority
+        generators = [comp for comp in all_components if comp.type == 'generator']
+        generator_priorities = self.standards.blackstart.generator_priorities
+        
+        for priority in sorted(generator_priorities.values()):
+            for comp in generators:
+                gen_type = getattr(comp, 'generator_type', 'unknown')
+                if generator_priorities.get(gen_type, 999) == priority:
+                    if not any(unit['id'] == comp.id for unit in blackstart_units):
+                        sequence.append({
+                            'phase': 2,
+                            'action': 'restore_generator',
+                            'component_id': comp.id,
+                            'time_minutes': 30 + priority * 15,  # Staggered restoration
+                            'description': f"Restore {gen_type} generator {comp.id} ({comp.capacity} MW)"
+                        })
+        
+        # Phase 3: Restore loads by priority
+        loads = [comp for comp in all_components if comp.type == 'load']
+        load_priorities = self.standards.blackstart.load_priorities
+        
+        for priority in sorted(load_priorities.values()):
+            for comp in loads:
+                load_type = getattr(comp, 'load_type', 'normal')
+                if load_priorities.get(load_type, 3) == priority:
+                    sequence.append({
+                        'phase': 3,
+                        'action': 'restore_load',
+                        'component_id': comp.id,
+                        'time_minutes': 60 + priority * 20,  # After generators stable
+                        'description': f"Restore {load_type} load {comp.id} ({comp.capacity} MW)"
+                    })
+        
+        return sequence
+    
+    def _get_line_impedance_between_buses(self, bus1_id: str, bus2_id: str) -> float:
+        """Get line impedance between two buses"""
+        for line in self.lines.values():
+            if (line.from_bus == bus1_id and line.to_bus == bus2_id) or \
+               (line.from_bus == bus2_id and line.to_bus == bus1_id):
+                # Calculate total impedance
+                resistance = self.get_line_resistance(line.type, line.length)
+                reactance = self.get_line_reactance(line.type, line.length)
+                return math.sqrt(resistance**2 + reactance**2)
+        return 0.0
+    
     def simulate(self) -> SimulationResult:
         """Run complete grid simulation"""
         # Validate network

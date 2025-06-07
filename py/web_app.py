@@ -352,26 +352,9 @@ def get_compliance_status():
         })
     })
 
-@app.route('/api/european/start_simulation', methods=['POST'])
-def start_european_simulation():
-    """Start the European grid simulation"""
-    global simulation_running, simulation_thread
-    
-    if not simulation_running:
-        simulation_running = True
-        simulation_thread = threading.Thread(target=run_simulation)
-        simulation_thread.daemon = True
-        simulation_thread.start()
-        return jsonify({'success': True, 'message': 'Simulation started'})
-    else:
-        return jsonify({'success': False, 'message': 'Simulation already running'})
+# Removed duplicate start_simulation function - using the enhanced version below
 
-@app.route('/api/european/stop_simulation', methods=['POST'])
-def stop_european_simulation():
-    """Stop the European grid simulation"""
-    global simulation_running
-    simulation_running = False
-    return jsonify({'success': True, 'message': 'Simulation stopped'})
+# Removed duplicate stop_simulation function - using the enhanced version below
 
 # Enhanced European API endpoints
 @app.route('/api/european/realtime')
@@ -396,11 +379,6 @@ def get_european_realtime():
         'thermal_violations': getattr(status['stats'], 'thermal_violations', 0),
         'timestamp': status['time_elapsed']
     })
-
-@app.route('/api/european/components')
-def get_european_components():
-    """Get European component specifications"""
-    return jsonify(european_game.component_types)
 
 @app.route('/api/european/start-simulation', methods=['POST'])
 def start_european_simulation():
@@ -441,14 +419,52 @@ def run_n1_analysis():
     """Run N-1 contingency analysis"""
     try:
         # Use unified grid engine for N-1 analysis
-        from unified_grid_engine import UnifiedGridEngine
+        from unified_grid_engine import UnifiedGridEngine, GridBus, GridBranch
         
         engine = UnifiedGridEngine()
         
         # Convert European game components to unified engine format
+        bus_counter = 1
         for comp_id, comp_data in european_game.components.items():
-            # Add components to engine (simplified)
-            pass
+            # Create bus for each component
+            bus_id = f"BUS_{bus_counter}"
+            voltage_level = comp_data.get('voltage_level', 400)
+            
+            bus = GridBus(
+                id=bus_id,
+                name=f"{comp_data.get('type', 'unknown')}_{comp_id}",
+                voltage_level=voltage_level,
+                base_voltage=voltage_level
+            )
+            
+            # Set generation or load based on component type
+            capacity = comp_data.get('capacity', 0)
+            if capacity > 0:  # Generator
+                bus.gen_p_max = capacity
+                bus.gen_p = capacity * 0.8  # 80% dispatch
+                bus.gen_q_max = capacity * 0.5
+                bus.is_slack = (bus_counter == 1)  # First generator as slack
+            else:  # Load
+                bus.load_p = abs(capacity)
+                bus.load_q = abs(capacity) * 0.3
+            
+            engine.add_bus(bus)
+            bus_counter += 1
+        
+        # Add some transmission lines between buses for connectivity
+        bus_ids = list(engine.buses.keys())
+        if len(bus_ids) >= 2:
+            for i in range(len(bus_ids) - 1):
+                line_id = f"LINE_{i+1}"
+                branch = GridBranch(
+                    id=line_id,
+                    from_bus=bus_ids[i],
+                    to_bus=bus_ids[i+1],
+                    resistance=0.01,
+                    reactance=0.1,
+                    rating_a=500  # MVA
+                )
+                engine.add_branch(branch)
         
         # Run contingency analysis
         results = engine.run_n1_contingency_analysis(parallel=True)
@@ -575,6 +591,185 @@ def get_system_events():
         
     except Exception as e:
         return jsonify({'error': f'Failed to get system events: {str(e)}'}), 500
+
+# U/Q Control and Blackstart API Endpoints
+
+@app.route('/api/european/voltage-control/enable', methods=['POST'])
+def enable_voltage_control():
+    """Enable voltage control for a generator"""
+    try:
+        data = request.json
+        component_id = data.get('component_id')
+        voltage_setpoint = data.get('voltage_setpoint', 1.0)
+        
+        success = european_game.enable_voltage_control(component_id, voltage_setpoint)
+        
+        if success:
+            # Emit real-time update
+            socketio.emit('voltage_control_enabled', {
+                'component_id': component_id,
+                'voltage_setpoint': voltage_setpoint
+            })
+            
+        return jsonify({
+            'success': success,
+            'message': 'Voltage control enabled' if success else 'Failed to enable voltage control'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/blackstart/configure', methods=['POST'])
+def configure_blackstart():
+    """Configure blackstart capability for a generator"""
+    try:
+        data = request.json
+        component_id = data.get('component_id')
+        blackstart_capable = data.get('blackstart_capable', True)
+        
+        success = european_game.configure_blackstart_capability(component_id, blackstart_capable)
+        
+        if success:
+            # Emit real-time update
+            socketio.emit('blackstart_configured', {
+                'component_id': component_id,
+                'blackstart_capable': blackstart_capable
+            })
+            
+        return jsonify({
+            'success': success,
+            'message': 'Blackstart capability configured' if success else 'Failed to configure blackstart'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/blackstart/assess', methods=['GET'])
+def assess_blackstart_capability():
+    """Assess current blackstart capability of the grid"""
+    try:
+        capability_status = european_game.assess_blackstart_capability()
+        return jsonify({
+            'success': True,
+            'blackstart_capability': capability_status
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/blackstart/initiate', methods=['POST'])
+def initiate_blackstart_scenario():
+    """Initiate a blackstart scenario for training"""
+    try:
+        success = european_game.initiate_blackstart_scenario()
+        
+        if success:
+            # Emit real-time update about blackstart scenario
+            socketio.emit('blackstart_scenario_initiated', {
+                'restoration_sequence': european_game.restoration_sequence,
+                'total_phases': len(european_game.restoration_sequence)
+            })
+            
+        return jsonify({
+            'success': success,
+            'message': 'Blackstart scenario initiated' if success else 'Insufficient blackstart capability',
+            'restoration_sequence': european_game.restoration_sequence if success else None
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/blackstart/advance', methods=['POST'])
+def advance_restoration():
+    """Advance to next step in blackstart restoration sequence"""
+    try:
+        step = european_game.advance_restoration_sequence()
+        
+        if step:
+            # Emit real-time update about restoration progress
+            socketio.emit('restoration_step_completed', {
+                'step': step,
+                'current_phase': european_game.current_restoration_phase,
+                'total_phases': len(european_game.restoration_sequence),
+                'completed': european_game.current_restoration_phase >= len(european_game.restoration_sequence)
+            })
+            
+        return jsonify({
+            'success': step is not None,
+            'step': step,
+            'restoration_complete': not european_game.blackstart_scenario_active
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/voltage/check-violations', methods=['GET'])
+def check_voltage_violations():
+    """Check for voltage violations according to European standards"""
+    try:
+        violations = european_game.check_voltage_violations()
+        return jsonify({
+            'success': True,
+            'violations': violations,
+            'violation_count': len(violations)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/voltage/apply-control', methods=['POST'])
+def apply_voltage_control():
+    """Apply automatic voltage control to generators with AVR enabled"""
+    try:
+        adjustments = european_game.apply_voltage_control()
+        
+        if adjustments:
+            # Emit real-time update about voltage control actions
+            socketio.emit('voltage_control_applied', {
+                'adjustments': adjustments,
+                'timestamp': time.time()
+            })
+            
+        return jsonify({
+            'success': True,
+            'voltage_adjustments': adjustments,
+            'adjustment_count': len(adjustments)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/standards/voltage', methods=['GET'])
+def get_voltage_standards():
+    """Get European voltage standards"""
+    try:
+        standards = {
+            'voltage_110_300kv_min': european_game.standards.voltage.voltage_110_300kv_min,
+            'voltage_110_300kv_max': european_game.standards.voltage.voltage_110_300kv_max,
+            'voltage_300_400kv_min': european_game.standards.voltage.voltage_300_400kv_min,
+            'voltage_300_400kv_max': european_game.standards.voltage.voltage_300_400kv_max,
+            'voltage_droop': european_game.standards.voltage.voltage_droop,
+            'reactive_power_response_time': european_game.standards.voltage.reactive_power_response_time,
+            'voltage_control_accuracy': european_game.standards.voltage.voltage_control_accuracy,
+            'avr_time_constant': european_game.standards.voltage.avr_time_constant,
+            'excitation_system_ceiling': european_game.standards.voltage.excitation_system_ceiling,
+            'excitation_system_floor': european_game.standards.voltage.excitation_system_floor
+        }
+        return jsonify({'success': True, 'voltage_standards': standards})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/standards/blackstart', methods=['GET'])
+def get_blackstart_standards():
+    """Get European blackstart standards"""
+    try:
+        standards = {
+            'minimum_blackstart_capability': european_game.standards.blackstart.minimum_blackstart_capability,
+            'maximum_restoration_time': european_game.standards.blackstart.maximum_restoration_time,
+            'blackstart_unit_response_time': european_game.standards.blackstart.blackstart_unit_response_time,
+            'generator_priorities': dict(european_game.standards.blackstart.generator_priorities),
+            'load_priorities': dict(european_game.standards.blackstart.load_priorities),
+            'frequency_restoration_target': european_game.standards.blackstart.frequency_restoration_target,
+            'voltage_restoration_target': european_game.standards.blackstart.voltage_restoration_target,
+            'load_pickup_increment_max': european_game.standards.blackstart.load_pickup_increment_max,
+            'generation_reserve_margin': european_game.standards.blackstart.generation_reserve_margin
+        }
+        return jsonify({'success': True, 'blackstart_standards': standards})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # WebSocket events
 @socketio.on('connect')
@@ -757,14 +952,52 @@ def handle_n1_analysis():
     """Run N-1 contingency analysis via WebSocket"""
     try:
         # Use unified grid engine for N-1 analysis
-        from unified_grid_engine import UnifiedGridEngine
+        from unified_grid_engine import UnifiedGridEngine, GridBus, GridBranch
         
         engine = UnifiedGridEngine()
         
         # Convert European game components to unified engine format
+        bus_counter = 1
         for comp_id, comp_data in european_game.components.items():
-            # Add components to engine (simplified)
-            pass
+            # Create bus for each component
+            bus_id = f"BUS_{bus_counter}"
+            voltage_level = comp_data.get('voltage_level', 400)
+            
+            bus = GridBus(
+                id=bus_id,
+                name=f"{comp_data.get('type', 'unknown')}_{comp_id}",
+                voltage_level=voltage_level,
+                base_voltage=voltage_level
+            )
+            
+            # Set generation or load based on component type
+            capacity = comp_data.get('capacity', 0)
+            if capacity > 0:  # Generator
+                bus.gen_p_max = capacity
+                bus.gen_p = capacity * 0.8  # 80% dispatch
+                bus.gen_q_max = capacity * 0.5
+                bus.is_slack = (bus_counter == 1)  # First generator as slack
+            else:  # Load
+                bus.load_p = abs(capacity)
+                bus.load_q = abs(capacity) * 0.3
+            
+            engine.add_bus(bus)
+            bus_counter += 1
+        
+        # Add some transmission lines between buses for connectivity
+        bus_ids = list(engine.buses.keys())
+        if len(bus_ids) >= 2:
+            for i in range(len(bus_ids) - 1):
+                line_id = f"LINE_{i+1}"
+                branch = GridBranch(
+                    id=line_id,
+                    from_bus=bus_ids[i],
+                    to_bus=bus_ids[i+1],
+                    resistance=0.01,
+                    reactance=0.1,
+                    rating_a=500  # MVA
+                )
+                engine.add_branch(branch)
         
         # Run contingency analysis
         results = engine.run_n1_contingency_analysis(parallel=True)
@@ -840,6 +1073,325 @@ def handle_get_system_events():
     except Exception as e:
         emit('system_events', {'error': f'Failed to get system events: {str(e)}'})
 
+# Additional U/Q Control API Endpoints
+
+@app.route('/api/european/uq-control/mode', methods=['POST'])
+def set_voltage_control_mode():
+    """Set voltage control mode for the grid"""
+    try:
+        data = request.json
+        mode = data.get('mode', 'automatic')
+        
+        # Apply mode to all voltage control enabled generators
+        mode_set = 0
+        for comp_id, component in european_game.components.items():
+            if component.get('voltage_control_enabled', False):
+                component['voltage_control_mode'] = mode
+                mode_set += 1
+        
+        return jsonify({
+            'success': True,
+            'mode': mode,
+            'generators_affected': mode_set,
+            'message': f'Voltage control mode set to {mode} for {mode_set} generators'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/uq-control/optimize', methods=['POST'])
+def optimize_voltage_control():
+    """Optimize voltage control setpoints using European standards"""
+    try:
+        data = request.json
+        target_voltage = data.get('targetVoltage', 1.0)
+        
+        # Use the European power flow simulator for optimization
+        optimization_result = european_game.simulator.optimize_voltage_control(
+            list(european_game.components.values()), target_voltage
+        )
+        
+        # Apply optimized setpoints
+        adjustments_applied = 0
+        for comp_id, new_setpoint in optimization_result.get('optimal_setpoints', {}).items():
+            if comp_id in european_game.components:
+                european_game.components[comp_id]['voltage_setpoint'] = new_setpoint
+                adjustments_applied += 1
+        
+        # Emit real-time update
+        socketio.emit('voltage_optimization_completed', {
+            'target_voltage': target_voltage,
+            'adjustments_applied': adjustments_applied,
+            'optimization_result': optimization_result
+        })
+        
+        return jsonify({
+            'success': True,
+            'data': optimization_result,
+            'adjustments_applied': adjustments_applied,
+            'target_voltage': target_voltage
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/uq-control/reset-avr', methods=['POST'])
+def reset_avr_controllers():
+    """Reset all AVR controllers to default settings"""
+    try:
+        reset_count = 0
+        for comp_id, component in european_game.components.items():
+            if component.get('avr_enabled', False):
+                # Reset AVR parameters to defaults
+                component['voltage_setpoint'] = 1.0
+                component['reactive_power'] = 0.0
+                component.setdefault('reactive_power_limits', {})
+                component['reactive_power_limits']['max'] = component['capacity'] * 0.5
+                component['reactive_power_limits']['min'] = -component['capacity'] * 0.5
+                reset_count += 1
+        
+        # Emit real-time update
+        socketio.emit('avr_controllers_reset', {
+            'reset_count': reset_count
+        })
+        
+        return jsonify({
+            'success': True,
+            'message': f'Reset {reset_count} AVR controllers',
+            'data': {'reset_count': reset_count}
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/uq-control/sensitivity', methods=['GET'])
+def perform_voltage_sensitivity_analysis():
+    """Perform voltage sensitivity analysis (dV/dQ)"""
+    try:
+        # Use the European power flow simulator for sensitivity analysis
+        sensitivity_result = european_game.simulator.calculate_voltage_sensitivity_matrix(
+            list(european_game.components.values())
+        )
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'sensitivity_matrix': sensitivity_result.get('dv_dq_matrix', []),
+                'bus_voltages': sensitivity_result.get('bus_voltages', []),
+                'reactive_powers': sensitivity_result.get('reactive_powers', []),
+                'analysis_timestamp': time.time()
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# Additional Blackstart API Endpoints
+
+@app.route('/api/european/blackstart/sequence', methods=['POST'])
+def generate_restoration_sequence():
+    """Generate optimal blackstart restoration sequence"""
+    try:
+        # Assess blackstart capability first
+        capability_status = european_game.assess_blackstart_capability()
+        
+        if not capability_status['meets_european_standard']:
+            return jsonify({
+                'success': False,
+                'message': 'Insufficient blackstart capability for sequence generation',
+                'required_percentage': capability_status['required_percentage'],
+                'current_percentage': capability_status['blackstart_percentage'] * 100
+            })
+        
+        # Generate restoration sequence using Fortran backend if available
+        try:
+            from fortran_interface import FortranInterface
+            fortran = FortranInterface()
+            
+            # Prepare data for Fortran optimization
+            generators = []
+            loads = []
+            for comp_id, component in european_game.components.items():
+                if component['capacity'] > 0:  # Generator
+                    generators.append({
+                        'id': comp_id,
+                        'capacity': component['capacity'],
+                        'type': component.get('type', 'unknown'),
+                        'blackstart_capable': component.get('blackstart_capable', False)
+                    })
+                else:  # Load
+                    loads.append({
+                        'id': comp_id,
+                        'capacity': abs(component['capacity']),
+                        'priority': component.get('priority', 3)
+                    })
+            
+            # Generate optimal sequence using Fortran
+            sequence = fortran.generate_blackstart_sequence(generators, loads)
+            
+        except ImportError:
+            # Fall back to Python implementation
+            sequence = european_game._generate_restoration_sequence()
+        
+        # Store sequence in game state
+        european_game.restoration_sequence = sequence
+        
+        # Emit real-time update
+        socketio.emit('restoration_sequence_generated', {
+            'sequence': sequence,
+            'total_steps': len(sequence)
+        })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'sequence': sequence,
+                'total_steps': len(sequence),
+                'estimated_time': sum([step.get('time', 15) for step in sequence])
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/european/blackstart/simulate', methods=['POST'])
+def simulate_blackstart_procedure():
+    """Simulate blackstart restoration procedure"""
+    try:
+        if not european_game.restoration_sequence:
+            return jsonify({
+                'success': False,
+                'message': 'No restoration sequence available. Generate sequence first.'
+            })
+        
+        # Initialize blackstart simulation
+        simulation_result = {
+            'phases': [
+                {
+                    'name': 'Blackstart Units',
+                    'description': 'Starting blackstart capable generators',
+                    'duration': 300,  # 5 minutes
+                    'progress': 0
+                },
+                {
+                    'name': 'Generation Restoration', 
+                    'description': 'Restoring additional generation capacity',
+                    'duration': 900,  # 15 minutes
+                    'progress': 0
+                },
+                {
+                    'name': 'Load Restoration',
+                    'description': 'Gradually restoring system load',
+                    'duration': 1200,  # 20 minutes
+                    'progress': 0
+                }
+            ],
+            'total_duration': 2400,  # 40 minutes total
+            'success': True,
+            'sequence': european_game.restoration_sequence
+        }
+        
+        # Mark simulation as active
+        european_game.blackstart_scenario_active = True
+        european_game.current_restoration_phase = 0
+        
+        # Emit real-time update
+        socketio.emit('blackstart_simulation_started', simulation_result)
+        
+        return jsonify({
+            'success': True,
+            'data': simulation_result,
+            'message': 'Blackstart simulation initiated successfully'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# WebSocket handlers for real-time U/Q control and blackstart updates
+@socketio.on('voltage_control_status_request')
+def handle_voltage_control_status():
+    """Send voltage control status to client"""
+    try:
+        voltage_violations = european_game.check_voltage_violations()
+        voltage_adjustments = european_game.apply_voltage_control()
+        
+        emit('voltage_control_status', {
+            'violations': voltage_violations,
+            'recent_adjustments': voltage_adjustments,
+            'active_controllers': len([c for c in european_game.components.values() if c.get('avr_enabled', False)]),
+            'timestamp': time.time()
+        })
+    except Exception as e:
+        emit('voltage_control_status', {'error': str(e)})
+
+@socketio.on('blackstart_status_request')
+def handle_blackstart_status():
+    """Send blackstart status to client"""
+    try:
+        capability_status = european_game.assess_blackstart_capability()
+        
+        emit('blackstart_status', {
+            'capability': capability_status,
+            'scenario_active': european_game.blackstart_scenario_active,
+            'current_phase': european_game.current_restoration_phase,
+            'sequence_length': len(european_game.restoration_sequence),
+            'timestamp': time.time()
+        })
+    except Exception as e:
+        emit('blackstart_status', {'error': str(e)})
+
+# Enhanced periodic status updates for U/Q and blackstart
+def enhanced_status_update():
+    """Enhanced periodic status update including U/Q and blackstart data"""
+    try:
+        if simulation_running:
+            status = european_game.get_game_status()
+            
+            # Add U/Q control status
+            voltage_violations = european_game.check_voltage_violations()
+            active_avr_count = len([c for c in european_game.components.values() if c.get('avr_enabled', False)])
+            
+            # Add blackstart status
+            if not european_game.blackstart_capability_status:
+                blackstart_status = european_game.assess_blackstart_capability()
+            else:
+                blackstart_status = european_game.blackstart_capability_status
+            
+            enhanced_status = {
+                **status,
+                'voltage_control': {
+                    'violations_count': len(voltage_violations),
+                    'active_avr_controllers': active_avr_count,
+                    'voltage_control_active': european_game.voltage_control_active
+                },
+                'blackstart': {
+                    'capability_percentage': blackstart_status['blackstart_percentage'] * 100,
+                    'meets_standard': blackstart_status['meets_european_standard'],
+                    'scenario_active': european_game.blackstart_scenario_active,
+                    'restoration_progress': (european_game.current_restoration_phase / max(1, len(european_game.restoration_sequence))) * 100
+                }
+            }
+            
+            socketio.emit('enhanced_status_update', enhanced_status)
+            
+    except Exception as e:
+        print(f"Enhanced status update error: {e}")
+
+# Start enhanced status updates timer
+import threading
+
+def start_enhanced_updates():
+    """Start enhanced status update timer"""
+    def update_loop():
+        while True:
+            if simulation_running:
+                enhanced_status_update()
+            time.sleep(5)  # Update every 5 seconds
+    
+    update_thread = threading.Thread(target=update_loop, daemon=True)
+    update_thread.start()
+
 if __name__ == '__main__':
-    # Run the app with SocketIO
+    print("Starting European Power Grid Builder v2.0 Web Server...")
+    print("Enhanced WebSocket communication enabled")
+    print("Access the application at: http://localhost:5000")
+    
+    # Start enhanced status updates
+    start_enhanced_updates()
+    
+    # Run with SocketIO
     socketio.run(app, host='0.0.0.0', port=5000, debug=True)

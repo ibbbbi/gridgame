@@ -1,6 +1,6 @@
 # European Power Grid Builder v2.0 Enhanced
 
-A comprehensive, realistic power grid building and simulation game featuring **enhanced European System Operation Guideline (SO GL) compliance mode** with revolutionary **Interactive Whiteboard** technology. This updated version includes advanced real-time monitoring, N-1 contingency analysis, professional-grade European grid standards implementation, and industry-first multi-device whiteboard capabilities for collaborative grid design.
+A comprehensive, realistic power grid building and simulation game featuring **enhanced European System Operation Guideline (SO GL) compliance mode** with revolutionary **Interactive Whiteboard** technology and advanced **U/Q Control & Blackstart Capability** features. This updated version includes advanced real-time monitoring, N-1 contingency analysis, professional-grade European grid standards implementation, voltage/reactive power control, blackstart restoration procedures, and industry-first multi-device whiteboard capabilities for collaborative grid design.
 
 ## ✨ Key Features
 
@@ -18,10 +18,24 @@ A comprehensive, realistic power grid building and simulation game featuring **e
 - **Advanced Analytics**: Live compliance scoring and performance metrics
 - **Professional Components**: Realistic European power plant specifications
 
+### 🔋 U/Q Control (Voltage/Reactive Power Control)
+- **Automatic Voltage Regulators (AVR)**: Professional-grade voltage control systems
+- **Voltage Sensitivity Analysis**: Real-time dV/dQ matrix calculations
+- **European Voltage Standards**: 400kV/220kV/110kV compliance monitoring
+- **Reactive Power Optimization**: Advanced droop and PI control algorithms
+- **Real-Time Adjustments**: Live voltage setpoint optimization
+
+### ⚫ Blackstart Capability & System Restoration
+- **Blackstart Assessment**: European standard compliance (≥10% of LFC area demand)
+- **Restoration Sequence Optimization**: AI-powered optimal restoration planning
+- **System Restoration Simulation**: Dynamic blackstart procedure modeling
+- **Generator Priority System**: Hydro, gas, coal, nuclear restoration hierarchy
+- **Load Pickup Scheduling**: Intelligent load restoration with safety margins
+
 ### 🔧 Technical Excellence
 - **Dual Architecture**: Python backend with TypeScript frontend
 - **WebSocket Integration**: Real-time bidirectional communication
-- **Fortran Acceleration**: High-performance numerical calculations
+- **Fortran Acceleration**: High-performance numerical calculations for U/Q control and blackstart
 - **Responsive Design**: Modern glassmorphism UI with mobile optimization
 - **Data Export**: Comprehensive simulation data and design file management
 
@@ -37,7 +51,7 @@ A comprehensive, realistic power grid building and simulation game featuring **e
 - **Mobile-First Design**: Responsive interface optimized for touch interactions
 - **Advanced Gesture Controls**: Two-finger zoom, pan, and rotation support
 
-### Enhanced European SO GL Mode
+### ⚡ Enhanced European SO GL Mode
 - **Real-time Monitoring**: High-frequency data updates (100ms) with professional-grade precision
 - **Advanced Compliance Tracking**: Live SO GL compliance scoring with detailed metrics
 - **Interactive Frequency Charts**: Real-time frequency deviation visualization with Chart.js
@@ -48,7 +62,32 @@ A comprehensive, realistic power grid building and simulation game featuring **e
 - **Auto-save Functionality**: Automatic game state preservation
 - **WebSocket Integration**: Real-time bidirectional communication for live updates
 
-### Professional Grid Standards
+### 🔋 U/Q Control (Voltage/Reactive Power Control) - NEW!
+- **Automatic Voltage Regulators (AVR)**: Industry-standard PI controllers with European specifications
+- **Voltage Sensitivity Analysis**: Real-time dV/dQ matrix calculations using advanced numerical methods
+- **Voltage Control Modes**: Automatic (AVR), Manual Control, and Droop Control options
+- **European Voltage Standards**: Strict compliance with SO GL voltage limits (0.90-1.05 pu)
+- **Reactive Power Optimization**: Newton-Raphson based optimization with reactive power constraints
+- **Real-Time Voltage Monitoring**: Live voltage deviation tracking with color-coded status indicators
+- **Generator Excitation Control**: Advanced excitation system modeling with realistic limits
+- **Fortran-Accelerated Calculations**: High-performance voltage control algorithms
+
+### ⚫ Blackstart Capability & System Restoration - NEW!
+- **European Blackstart Standards**: Full compliance with NC ER Article 23 requirements
+- **Blackstart Assessment**: Automatic evaluation of ≥10% LFC area demand capability
+- **Restoration Sequence Optimization**: AI-powered optimal restoration planning with generator priorities
+- **System Restoration Simulation**: Dynamic modeling of blackstart procedures with realistic timing
+- **Generator Priority Hierarchy**: Smart sequencing based on European best practices:
+  - **Blackstart Units**: Immediate restoration capability (5 minutes)
+  - **Hydro Plants**: Fast response units (10 minutes)
+  - **Gas Turbines**: Quick-start capability (20 minutes)
+  - **Coal Plants**: Medium-term restoration (60 minutes)
+  - **Nuclear Plants**: Long-term restoration (180 minutes)
+- **Load Pickup Scheduling**: Intelligent load restoration with generation reserve margins
+- **Training Mode**: Interactive blackstart scenario training and assessment
+- **Compliance Monitoring**: Real-time tracking of blackstart capability percentage
+
+### 🔧 Professional Grid Standards
 - **Unified Grid Engine**: High-performance calculation engine with Fortran acceleration
 - **Continental Europe Standards**: Full ENTSO-E System Operation Guidelines implementation
 - **Advanced Power Flow**: Newton-Raphson solver with sparse matrix optimization
@@ -140,17 +179,31 @@ Industry-grade grid operation simulation:
 git clone https://github.com/your-repo/european-power-grid-builder.git
 cd european-power-grid-builder
 
-# Run setup script
+# Complete setup with all advanced features
 ./setup.sh setup
 
-# Start the web application
+# Start the enhanced web application
 ./setup.sh start
 ```
 
-### Access the Game
+### Feature Testing & Validation
+```bash
+# Test U/Q Control (Voltage/Reactive Power) features
+./setup.sh test-uq
+
+# Test Blackstart Capability & System Restoration
+./setup.sh test-blackstart
+
+# Check system requirements and feature availability
+./setup.sh check
+```
+
+### Access the Application
 - **Web Interface**: http://localhost:5000
-- **Game Mode**: Toggle between Classic and European SO GL modes
-- **Documentation**: Built-in help and tutorials
+- **Game Modes**: Toggle between Classic and European SO GL modes
+- **Interactive Whiteboard**: Multi-device grid design interface
+- **API Documentation**: http://localhost:5000/api/docs
+- **Mobile Optimized**: Touch-friendly interface for tablets and phones
 
 ## 🏗️ System Architecture
 

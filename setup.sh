@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Grid Game Setup Script
-# This script handles initial setup and game startup for the Grid Game project
+# European Power Grid Builder v2.0 Enhanced Setup Script
+# Advanced power system simulation with U/Q Control and Blackstart Capability
+# This script handles installation, setup, and application startup
 
 set -e  # Exit on any error
 
@@ -53,9 +54,46 @@ check_python_version() {
     fi
 }
 
+# Function to check Fortran compiler
+check_fortran_compiler() {
+    if command_exists gfortran; then
+        print_success "Fortran compiler (gfortran) found"
+        return 0
+    else
+        print_warning "Fortran compiler not found - advanced numerical features disabled"
+        print_status "To enable U/Q Control and Blackstart features, install gfortran:"
+        print_status "  Ubuntu/Debian: sudo apt-get install gfortran"
+        print_status "  macOS: brew install gcc"
+        print_status "  RHEL/CentOS: sudo yum install gcc-gfortran"
+        return 1
+    fi
+}
+
+# Function to compile Fortran modules
+compile_fortran() {
+    print_status "Compiling Fortran acceleration modules..."
+    
+    cd py
+    if [ -d "venv" ]; then
+        source venv/bin/activate
+    fi
+    
+    if python3 compile_fortran.py; then
+        print_success "Fortran modules compiled successfully"
+        print_status "U/Q Control and Blackstart features enabled"
+    else
+        print_warning "Fortran compilation failed - falling back to Python implementation"
+    fi
+    
+    if [ -d "venv" ]; then
+        deactivate
+    fi
+    cd ..
+}
+
 # Function to setup Python environment
 setup_python() {
-    print_status "Setting up Python environment..."
+    print_status "Setting up Python environment for European Power Grid Builder..."
     
     if [ ! -f "py/requirements.txt" ]; then
         print_error "py/requirements.txt not found"
@@ -75,44 +113,125 @@ setup_python() {
     print_status "Installing Python dependencies..."
     cd py
     source venv/bin/activate
+    pip install --upgrade pip
     pip install -r requirements.txt
+    
+    # Install additional dependencies for enhanced features
+    print_status "Installing additional dependencies for U/Q Control and Blackstart..."
+    pip install scipy matplotlib seaborn
+    
     deactivate
     cd ..
     print_success "Python dependencies installed"
+    
+    # Compile Fortran modules if compiler is available
+    if check_fortran_compiler; then
+        compile_fortran
+    fi
 }
 
 # Function to start the Python web server
 start_python_server() {
-    print_status "Starting Python web server..."
+    print_status "Starting European Power Grid Builder web server..."
     
     cd py
     if [ -d "venv" ]; then
         source venv/bin/activate
-        print_success "Starting Python Grid Game server..."
-        print_status "The game will be available at http://localhost:5000"
+        print_success "Starting Enhanced Power Grid Builder server..."
+        print_status "✨ Features enabled:"
+        print_status "  🔧 European SO GL compliance mode"
+        print_status "  🎨 Interactive whiteboard with multi-device support"
+        print_status "  🔋 U/Q Control (Voltage/Reactive Power)"
+        print_status "  ⚫ Blackstart Capability & System Restoration"
+        print_status ""
+        print_status "🌐 Access the application at: http://localhost:5000"
+        print_status "📱 Mobile-optimized interface available"
+        print_status "🔧 API Documentation: http://localhost:5000/api/docs"
+        print_status ""
         print_status "Press Ctrl+C to stop the server"
-        python3 web_app.py
+        python3 enhanced_web_app.py
         deactivate
     else
         print_warning "Virtual environment not found, running without it"
-        python3 web_app.py
+        python3 enhanced_web_app.py
     fi
     cd ..
 }
 
 # Function to run interactive game
 run_interactive_game() {
-    print_status "Starting interactive Grid Game..."
+    print_status "Starting interactive European Power Grid Builder..."
     
     cd py
     if [ -d "venv" ]; then
         source venv/bin/activate
-        print_success "Starting Grid Game CLI..."
-        python3 game_init.py interactive
+        print_success "Starting Enhanced Grid Game CLI..."
+        python3 european_grid_game.py
         deactivate
     else
         print_warning "Virtual environment not found, running without it"
-        python3 game_init.py interactive
+        python3 european_grid_game.py
+    fi
+    cd ..
+}
+
+# Function to run U/Q control tests
+test_uq_control() {
+    print_status "Testing U/Q Control (Voltage/Reactive Power) features..."
+    
+    cd py
+    if [ -d "venv" ]; then
+        source venv/bin/activate
+        print_status "Running U/Q Control validation tests..."
+        python3 -c "
+from fortran_interface import test_uq_control
+from european_power_flow_simulator import EuropeanPowerFlowSimulator
+import numpy as np
+
+print('Testing U/Q Control Features:')
+print('1. AVR System Response')
+print('2. Voltage Sensitivity Analysis')
+print('3. European Voltage Standards Compliance')
+print('4. Reactive Power Optimization')
+
+simulator = EuropeanPowerFlowSimulator()
+result = simulator.test_uq_functionality()
+print(f'U/Q Control Test Result: {result}')
+"
+        deactivate
+    else
+        print_warning "Virtual environment not found"
+        return 1
+    fi
+    cd ..
+}
+
+# Function to run blackstart capability tests
+test_blackstart() {
+    print_status "Testing Blackstart Capability & System Restoration features..."
+    
+    cd py
+    if [ -d "venv" ]; then
+        source venv/bin/activate
+        print_status "Running Blackstart validation tests..."
+        python3 -c "
+from fortran_interface import test_blackstart_capability
+from european_grid_standards import EuropeanGridStandards
+
+print('Testing Blackstart Features:')
+print('1. European Standard Compliance (≥10% LFC area)')
+print('2. Restoration Sequence Optimization')
+print('3. Generator Priority System')
+print('4. Load Pickup Scheduling')
+
+standards = EuropeanGridStandards()
+result = standards.test_blackstart_compliance()
+print(f'Blackstart Test Result: {result}')
+"
+        deactivate
+    else
+        print_warning "Virtual environment not found"
+        return 1
     fi
     cd ..
 }
@@ -134,43 +253,73 @@ run_simulation() {
 
 # Function to show help
 show_help() {
-    echo "Grid Game Setup Script"
+    echo "European Power Grid Builder v2.0 Enhanced Setup Script"
+    echo "Advanced power system simulation with U/Q Control and Blackstart features"
+    echo ""
     echo "Usage: ./setup.sh [COMMAND]"
     echo ""
     echo "Commands:"
-    echo "  setup     - Complete initial setup (install Python dependencies)"
-    echo "  start     - Start Python web server"
-    echo "  simulate  - Run grid simulation"
-    echo "  game      - Run interactive game"
-    echo "  check     - Check system requirements"
-    echo "  help      - Show this help message"
+    echo "  setup        - Complete initial setup (install dependencies, compile Fortran)"
+    echo "  start        - Start enhanced web server with all features"
+    echo "  simulate     - Run European grid simulation"
+    echo "  game         - Run interactive European grid game"
+    echo "  test-uq      - Test U/Q Control (Voltage/Reactive Power) features"
+    echo "  test-blackstart - Test Blackstart Capability features"
+    echo "  compile      - Compile Fortran acceleration modules"
+    echo "  check        - Check system requirements and feature availability"
+    echo "  help         - Show this help message"
     echo ""
     echo "Examples:"
-    echo "  ./setup.sh setup      # First time setup"
-    echo "  ./setup.sh start      # Start Python web server"
-    echo "  ./setup.sh game       # Run interactive CLI game"
+    echo "  ./setup.sh setup           # First time setup with all features"
+    echo "  ./setup.sh start           # Start enhanced web application"
+    echo "  ./setup.sh test-uq         # Validate U/Q Control functionality"
+    echo "  ./setup.sh test-blackstart # Validate Blackstart features"
+    echo "  ./setup.sh compile         # Recompile Fortran modules"
+    echo ""
+    echo "Features:"
+    echo "  🔧 European SO GL compliance mode"
+    echo "  🎨 Interactive whiteboard (multi-device)"
+    echo "  🔋 U/Q Control (Voltage/Reactive Power)"
+    echo "  ⚫ Blackstart Capability & System Restoration"
+    echo "  ⚡ Fortran-accelerated numerical calculations"
 }
 
 # Function to check system requirements
 check_requirements() {
-    print_status "Checking system requirements..."
+    print_status "Checking system requirements for European Power Grid Builder..."
     
     local python_ok=0
+    local fortran_ok=0
     
     check_python_version && python_ok=1
+    check_fortran_compiler && fortran_ok=1
+    
+    print_status ""
+    print_status "Feature Availability:"
+    if [ $python_ok -eq 1 ]; then
+        print_success "✅ Core Features: European SO GL mode, Interactive Whiteboard"
+    else
+        print_error "❌ Core Features: Python 3.8+ required"
+    fi
+    
+    if [ $fortran_ok -eq 1 ]; then
+        print_success "✅ Advanced Features: U/Q Control, Blackstart, Fortran acceleration"
+    else
+        print_warning "⚠️  Advanced Features: Fortran compiler needed for optimal performance"
+    fi
     
     if [ $python_ok -eq 1 ]; then
-        print_success "All system requirements met!"
+        print_success "System ready for European Power Grid Builder!"
         return 0
     else
-        print_error "Python requirements not met. Please install Python 3.8 or higher."
+        print_error "Please install Python 3.8 or higher to continue."
         return 1
     fi
 }
 
 # Function to perform complete setup
 complete_setup() {
-    print_status "Starting complete Grid Game setup..."
+    print_status "Starting complete European Power Grid Builder v2.0 setup..."
     
     # Check requirements first
     if ! check_requirements; then
@@ -184,11 +333,16 @@ complete_setup() {
         exit 1
     fi
     
-    print_success "Setup completed successfully!"
-    print_status "You can now run:"
-    print_status "  ./setup.sh start     - Start Python web server"
-    print_status "  ./setup.sh game      - Run interactive CLI game"
-    print_status "  ./setup.sh simulate  - Run grid simulation"
+    print_success "🎉 European Power Grid Builder v2.0 Enhanced setup completed!"
+    print_status ""
+    print_status "Available commands:"
+    print_status "  ./setup.sh start           - Start enhanced web application"
+    print_status "  ./setup.sh game             - Run interactive European grid game"
+    print_status "  ./setup.sh test-uq          - Test U/Q Control features"
+    print_status "  ./setup.sh test-blackstart  - Test Blackstart capabilities"
+    print_status ""
+    print_status "🌐 Web Interface: http://localhost:5000"
+    print_status "📖 Documentation: See README.md and included guides"
 }
 
 # Main script logic
@@ -204,6 +358,20 @@ case "${1:-setup}" in
         ;;
     "simulate")
         run_simulation
+        ;;
+    "test-uq")
+        test_uq_control
+        ;;
+    "test-blackstart")
+        test_blackstart
+        ;;
+    "compile")
+        if check_fortran_compiler; then
+            compile_fortran
+        else
+            print_error "Fortran compiler not available"
+            exit 1
+        fi
         ;;
     "check")
         check_requirements

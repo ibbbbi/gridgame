@@ -35,6 +35,14 @@ class VoltageStandards:
     # Standard voltage levels in kV
     voltage_levels: List[int] = None
     
+    # U/Q Control Parameters (SO GL Article 15)
+    voltage_droop: float = 0.05  # 5% voltage droop characteristic
+    reactive_power_response_time: float = 5.0  # 5 seconds for Q response
+    voltage_control_accuracy: float = 0.01  # 1% voltage control accuracy
+    avr_time_constant: float = 0.5  # 0.5 seconds AVR time constant
+    excitation_system_ceiling: float = 2.0  # 2.0 pu excitation ceiling
+    excitation_system_floor: float = -2.0  # -2.0 pu excitation floor
+    
     def __post_init__(self):
         if self.voltage_levels is None:
             self.voltage_levels = [400, 220, 110, 50, 20, 10]
@@ -59,6 +67,41 @@ class ReserveStandards:
     
     # Recovery requirements
     energy_reservoir_recovery_time: float = 2.0 * 3600  # 2 hours after alert state
+
+@dataclass
+class BlackstartStandards:
+    """Continental Europe Blackstart Standards (NC ER Article 23)"""
+    # Blackstart Capability Requirements
+    minimum_blackstart_capability: float = 0.10  # 10% of LFC area demand
+    maximum_restoration_time: float = 4.0 * 3600  # 4 hours maximum
+    blackstart_unit_response_time: float = 15.0 * 60  # 15 minutes max start time
+    
+    # Generator Priority Levels for Restoration
+    generator_priorities: Dict[str, int] = None
+    load_priorities: Dict[str, int] = None
+    
+    # Restoration Sequence Parameters
+    frequency_restoration_target: float = 49.5  # Hz minimum for load pickup
+    voltage_restoration_target: float = 0.95  # pu minimum for load pickup
+    load_pickup_increment_max: float = 0.25  # 25% max load increment
+    generation_reserve_margin: float = 0.15  # 15% generation reserve during restoration
+    
+    def __post_init__(self):
+        if self.generator_priorities is None:
+            self.generator_priorities = {
+                'blackstart': 1,  # Highest priority
+                'hydro': 2,
+                'gas': 3,
+                'coal': 4,
+                'nuclear': 5     # Lowest priority - requires stable grid
+            }
+        
+        if self.load_priorities is None:
+            self.load_priorities = {
+                'critical': 1,    # Essential services
+                'important': 2,   # Important industrial loads
+                'normal': 3       # General consumption
+            }
 
 @dataclass
 class NetworkStandards:
@@ -87,6 +130,7 @@ class EuropeanGridStandards:
         self.frequency = FrequencyStandards()
         self.voltage = VoltageStandards()
         self.reserves = ReserveStandards()
+        self.blackstart = BlackstartStandards()
         self.network = NetworkStandards()
         
         # Operational states
@@ -216,6 +260,11 @@ FCR REQUIREMENTS:
 VOLTAGE STANDARDS:
 - 110-300 kV: {self.voltage.voltage_110_300kv_min}-{self.voltage.voltage_110_300kv_max} pu
 - 300-400 kV: {self.voltage.voltage_300_400kv_min}-{self.voltage.voltage_300_400kv_max} pu
+
+BLACKSTART STANDARDS:
+- Minimum capability: {self.blackstart.minimum_blackstart_capability*100}% of LFC area demand
+- Maximum restoration time: {self.blackstart.maximum_restoration_time/3600} hours
+- Unit response time: {self.blackstart.blackstart_unit_response_time/60} minutes max
 
 NETWORK REQUIREMENTS:
 - N-1 security criterion mandatory

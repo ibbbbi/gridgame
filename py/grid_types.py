@@ -63,6 +63,28 @@ class GridComponent:
     voltage_magnitude: float = 1.0  # per unit (0.95-1.05)
     voltage_angle: float = 0.0  # degrees
     frequency: float = 50.0  # Hz (50 Hz European standard)
+    
+    # U/Q Control Parameters
+    voltage_control_enabled: bool = False  # Voltage/reactive power control capability
+    voltage_setpoint: float = 1.0  # per unit voltage setpoint
+    reactive_power_limits: Dict[str, float] = None  # {'min': -200, 'max': 200} MVAr
+    avr_enabled: bool = False  # Automatic Voltage Regulator
+    excitation_system_type: str = 'static'  # 'static', 'rotating', 'digital'
+    
+    # Blackstart Capability Parameters  
+    blackstart_capable: bool = False  # Can provide blackstart service
+    blackstart_time: float = 15.0  # minutes to start from cold
+    generator_type: str = 'unknown'  # 'hydro', 'gas', 'coal', 'nuclear', etc.
+    load_type: str = 'normal'  # 'critical', 'important', 'normal' for loads
+    restoration_priority: int = 5  # Lower number = higher priority
+    
+    def __post_init__(self):
+        if self.reactive_power_limits is None:
+            # Default reactive power limits based on component type
+            if self.type == 'generator':
+                self.reactive_power_limits = {'min': -self.capacity * 0.5, 'max': self.capacity * 0.5}
+            else:
+                self.reactive_power_limits = {'min': 0.0, 'max': 0.0}
 
 @dataclass
 class PowerLine:

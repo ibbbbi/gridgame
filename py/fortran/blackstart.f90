@@ -1,0 +1,307 @@
+! blackstart.f90
+! High-performance Fortran module for blackstart capability analysis
+! Implements European grid blackstart procedures and system restoration
+
+module blackstart
+    implicit none
+    integer, parameter :: dp = kind(1.0d0)  ! Double precision
+    real(dp), parameter :: PI = 3.141592653589793_dp
+    real(dp), parameter :: BASE_FREQUENCY = 50.0_dp  ! European grid frequency
+    real(dp), parameter :: BLACKSTART_VOLTAGE_TARGET = 1.0_dp  ! 1.0 pu target
+    
+contains
+
+    ! Identify blackstart capable units and optimal restoration sequence
+    subroutine blackstart_sequence_optimizer(n_generators, n_loads, n_lines, &
+                                           generator_types, generator_capacities, &
+                                           blackstart_capabilities, load_priorities, &
+                                           network_connectivity, restoration_sequence, &
+                                           restoration_time, total_restored_load)
+        implicit none
+        
+        ! Input parameters
+        integer, intent(in) :: n_generators, n_loads, n_lines
+        integer, intent(in) :: generator_types(n_generators)  ! 1=nuclear, 2=coal, 3=gas, 4=hydro, 5=wind, 6=solar
+        real(dp), intent(in) :: generator_capacities(n_generators)  ! MW
+        logical, intent(in) :: blackstart_capabilities(n_generators)
+        integer, intent(in) :: load_priorities(n_loads)  ! 1=critical, 2=important, 3=normal
+        integer, intent(in) :: network_connectivity(n_generators + n_loads, n_generators + n_loads)
+        
+        ! Output parameters
+        integer, intent(out) :: restoration_sequence(n_generators + n_loads)
+        real(dp), intent(out) :: restoration_time(n_generators + n_loads)
+        real(dp), intent(out) :: total_restored_load
+        
+        ! Local variables
+        integer :: i, j, step, n_total
+        logical :: is_restored(n_generators + n_loads)
+        logical :: can_restore(n_generators + n_loads)
+        real(dp) :: current_generation, current_load
+        real(dp) :: step_time, cumulative_time
+        integer :: best_candidate, priority_score
+        real(dp) :: restoration_rate  ! MW/minute
+        
+        n_total = n_generators + n_loads
+        is_restored = .false.
+        can_restore = .false.
+        restoration_sequence = 0
+        restoration_time = 0.0_dp
+        current_generation = 0.0_dp
+        current_load = 0.0_dp
+        total_restored_load = 0.0_dp
+        cumulative_time = 0.0_dp
+        
+        ! Typical European blackstart restoration rates
+        restoration_rate = 50.0_dp  ! 50 MW per minute average
+        
+        ! Step 1: Identify and start blackstart units
+        do i = 1, n_generators
+            if (blackstart_capabilities(i)) then
+                ! Blackstart units can be restored immediately
+                can_restore(i) = .true.
+            end if
+        end do
+        
+        ! Restoration sequence optimization
+        do step = 1, n_total
+            best_candidate = -1
+            priority_score = -1
+            
+            ! Find best candidate for next restoration step
+            do i = 1, n_total
+                if (.not. is_restored(i) .and. can_restore(i)) then
+                    if (i <= n_generators) then
+                        ! Generator restoration priority
+                        if (blackstart_capabilities(i)) then
+                            ! Blackstart units have highest priority
+                            if (priority_score < 1000) then
+                                priority_score = 1000
+                                best_candidate = i
+                            end if
+                        elseif (generator_types(i) == 4) then  ! Hydro
+                            ! Hydro units are excellent for system restoration
+                            if (priority_score < 800) then
+                                priority_score = 800
+                                best_candidate = i
+                            end if
+                        elseif (generator_types(i) == 3) then  ! Gas
+                            ! Gas units have fast start capability
+                            if (priority_score < 600) then
+                                priority_score = 600
+                                best_candidate = i
+                            end if
+                        elseif (generator_types(i) == 2) then  ! Coal
+                            ! Coal units for base load
+                            if (priority_score < 400) then
+                                priority_score = 400
+                                best_candidate = i
+                            end if
+                        elseif (generator_types(i) == 1) then  ! Nuclear
+                            ! Nuclear units last due to complexity
+                            if (priority_score < 200) then
+                                priority_score = 200
+                                best_candidate = i
+                            end if
+                        end if
+                    else
+                        ! Load restoration priority (i > n_generators)
+                        j = i - n_generators
+                        if (j <= n_loads) then
+                            if (load_priorities(j) == 1) then  ! Critical load
+                                if (priority_score < 900) then
+                                    priority_score = 900
+                                    best_candidate = i
+                                end if
+                            elseif (load_priorities(j) == 2) then  ! Important load
+                                if (priority_score < 500) then
+                                    priority_score = 500
+                                    best_candidate = i
+                                end if
+                            elseif (load_priorities(j) == 3) then  ! Normal load
+                                if (priority_score < 300) then
+                                    priority_score = 300
+                                    best_candidate = i
+                                end if
+                            end if
+                        end if
+                    end if
+                end if
+            end do
+            
+            ! No more candidates available
+            if (best_candidate == -1) exit
+            
+            ! Restore the best candidate
+            is_restored(best_candidate) = .true.
+            restoration_sequence(step) = best_candidate
+            
+            ! Calculate restoration time based on unit type and capacity
+            if (best_candidate <= n_generators) then
+                ! Generator restoration time
+                if (blackstart_capabilities(best_candidate)) then
+                    step_time = 5.0_dp  ! 5 minutes for blackstart units
+                elseif (generator_types(best_candidate) == 4) then  ! Hydro
+                    step_time = 10.0_dp  ! 10 minutes for hydro
+                elseif (generator_types(best_candidate) == 3) then  ! Gas
+                    step_time = 20.0_dp  ! 20 minutes for gas turbines
+                elseif (generator_types(best_candidate) == 2) then  ! Coal
+                    step_time = 60.0_dp  ! 60 minutes for coal units
+                elseif (generator_types(best_candidate) == 1) then  ! Nuclear
+                    step_time = 180.0_dp  ! 180 minutes for nuclear units
+                else
+                    step_time = 30.0_dp  ! Default
+                end if
+                
+                current_generation = current_generation + generator_capacities(best_candidate)
+            else
+                ! Load restoration time (based on size and generation availability)
+                j = best_candidate - n_generators
+                step_time = 5.0_dp  ! 5 minutes for load pickup
+                ! Ensure sufficient generation before restoring load
+                if (current_generation >= current_load + 50.0_dp) then  ! 50 MW reserve
+                    current_load = current_load + 100.0_dp  ! Assume 100 MW load blocks
+                    total_restored_load = total_restored_load + 100.0_dp
+                end if
+            end if
+            
+            cumulative_time = cumulative_time + step_time
+            restoration_time(step) = cumulative_time
+            
+            ! Update connectivity: newly restored units can help restore neighbors
+            call update_restoration_connectivity(n_total, best_candidate, &
+                                               network_connectivity, is_restored, can_restore)
+        end do
+        
+    end subroutine blackstart_sequence_optimizer
+
+    ! Update which units can be restored based on network connectivity
+    subroutine update_restoration_connectivity(n_total, newly_restored, &
+                                             connectivity_matrix, is_restored, can_restore)
+        implicit none
+        
+        integer, intent(in) :: n_total, newly_restored
+        integer, intent(in) :: connectivity_matrix(n_total, n_total)
+        logical, intent(in) :: is_restored(n_total)
+        logical, intent(inout) :: can_restore(n_total)
+        
+        integer :: i
+        
+        ! Check all units to see if they are now connected to restored system
+        do i = 1, n_total
+            if (.not. is_restored(i) .and. .not. can_restore(i)) then
+                ! Check if this unit is connected to the newly restored unit
+                if (connectivity_matrix(i, newly_restored) == 1 .or. &
+                    connectivity_matrix(newly_restored, i) == 1) then
+                    can_restore(i) = .true.
+                end if
+            end if
+        end do
+        
+    end subroutine update_restoration_connectivity
+
+    ! Calculate blackstart capability metrics for European grid standards
+    subroutine blackstart_capability_assessment(n_generators, generator_types, &
+                                               generator_capacities, blackstart_capabilities, &
+                                               total_blackstart_capacity, blackstart_ratio, &
+                                               meets_european_standards)
+        implicit none
+        
+        integer, intent(in) :: n_generators
+        integer, intent(in) :: generator_types(n_generators)
+        real(dp), intent(in) :: generator_capacities(n_generators)
+        logical, intent(in) :: blackstart_capabilities(n_generators)
+        real(dp), intent(out) :: total_blackstart_capacity
+        real(dp), intent(out) :: blackstart_ratio
+        logical, intent(out) :: meets_european_standards
+        
+        ! Local variables
+        integer :: i
+        real(dp) :: total_generation_capacity
+        real(dp) :: required_blackstart_capacity
+        
+        total_blackstart_capacity = 0.0_dp
+        total_generation_capacity = 0.0_dp
+        
+        do i = 1, n_generators
+            total_generation_capacity = total_generation_capacity + generator_capacities(i)
+            
+            if (blackstart_capabilities(i)) then
+                total_blackstart_capacity = total_blackstart_capacity + generator_capacities(i)
+            end if
+        end do
+        
+        ! Calculate blackstart ratio
+        if (total_generation_capacity > 0.0_dp) then
+            blackstart_ratio = total_blackstart_capacity / total_generation_capacity
+        else
+            blackstart_ratio = 0.0_dp
+        end if
+        
+        ! European standards typically require 10-15% blackstart capability
+        required_blackstart_capacity = 0.10_dp * total_generation_capacity  ! 10% minimum
+        
+        meets_european_standards = (total_blackstart_capacity >= required_blackstart_capacity)
+        
+    end subroutine blackstart_capability_assessment
+
+    ! Simulate system restoration dynamics
+    subroutine restoration_dynamics(n_steps, time_step, target_frequency, &
+                                  initial_generation, load_pickup_schedule, &
+                                  frequency_response, voltage_response, &
+                                  successful_restoration)
+        implicit none
+        
+        integer, intent(in) :: n_steps
+        real(dp), intent(in) :: time_step, target_frequency
+        real(dp), intent(in) :: initial_generation
+        real(dp), intent(in) :: load_pickup_schedule(n_steps)
+        real(dp), intent(out) :: frequency_response(n_steps)
+        real(dp), intent(out) :: voltage_response(n_steps)
+        logical, intent(out) :: successful_restoration
+        
+        ! Local variables
+        integer :: i
+        real(dp) :: current_frequency, current_voltage
+        real(dp) :: generation_load_imbalance, frequency_deviation
+        real(dp) :: inertia_constant, damping_coefficient
+        real(dp) :: df_dt, dv_dt
+        
+        ! System parameters for European grid
+        inertia_constant = 5.0_dp  ! Typical system inertia (seconds)
+        damping_coefficient = 1.0_dp  ! Load damping
+        
+        ! Initial conditions
+        current_frequency = target_frequency
+        current_voltage = 1.0_dp  ! 1.0 pu
+        successful_restoration = .true.
+        
+        do i = 1, n_steps
+            ! Calculate generation-load imbalance
+            generation_load_imbalance = initial_generation - load_pickup_schedule(i)
+            
+            ! Frequency dynamics (swing equation simplified)
+            frequency_deviation = current_frequency - target_frequency
+            df_dt = (generation_load_imbalance - damping_coefficient * frequency_deviation) / &
+                    (2.0_dp * inertia_constant)
+            
+            current_frequency = current_frequency + df_dt * time_step
+            
+            ! Voltage dynamics (simplified)
+            dv_dt = 0.1_dp * (BLACKSTART_VOLTAGE_TARGET - current_voltage)
+            current_voltage = current_voltage + dv_dt * time_step
+            
+            ! Store responses
+            frequency_response(i) = current_frequency
+            voltage_response(i) = current_voltage
+            
+            ! Check for restoration failure
+            if (abs(frequency_deviation) > 2.0_dp .or. &  ! ±2 Hz limit
+                current_voltage < 0.8_dp .or. current_voltage > 1.2_dp) then
+                successful_restoration = .false.
+                exit
+            end if
+        end do
+        
+    end subroutine restoration_dynamics
+
+end module blackstart
