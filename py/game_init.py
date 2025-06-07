@@ -27,7 +27,7 @@ class GameInitializer:
         self.config_file = config_file
         self.default_config = {
             "game_settings": {
-                "initial_budget": 100000,
+                "initial_budget": 500000,
                 "difficulty": "medium",
                 "time_limit": 300,  # 5 minutes
                 "grid_size": 8,

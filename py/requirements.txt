@@ -3,3 +3,8 @@
 # Core dependencies
 numpy>=1.21.0
 flask>=2.0.0
+
+# Optional Fortran acceleration (requires gfortran compiler)
+# f2py is included with NumPy >= 1.21.0
+# Install gfortran: sudo apt-get install gfortran (Ubuntu/Debian)
+# Install gfortran: brew install gcc (macOS)
